@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CommentPulse</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M4 5h16v11H8l-4 4V5Z" fill="currentColor"/><path d="M8.5 10.5h7M8.5 13h4" stroke="#4f46e5" stroke-width="1.6" stroke-linecap="round"/></svg>
+    </span>
+    CommentPulse
+    <span class="env-tag">Phase 1</span>
+  </div>
+  <div class="topbar-right">
+    <div class="quota-pill" id="quotaPill" title="YouTube API 每日配额用量（本地估算，非 Google 官方数字）" hidden>
+      <span id="quotaText">配额 —</span>
+      <span class="quota-bar"><span class="quota-bar-fill" id="quotaBarFill"></span></span>
+    </div>
+    <button class="theme-btn" id="maskToggle" type="button" title="遮住评论者用户名的中间部分，截图分享时保护隐私">隐藏用户名</button>
+    <button class="theme-btn" id="themeToggle" type="button">切换主题</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <section class="query">
+    <form class="qform" id="qform">
+      <input id="url" type="text" placeholder="粘贴 YouTube 视频链接，例如 https://www.youtube.com/watch?v=..." aria-label="YouTube 视频链接" spellcheck="false">
+      <button type="submit" id="analyzeBtn">分析</button>
+    </form>
+    <div class="progress" id="progress" aria-live="polite">
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-label" id="progressLabel"></div>
+    </div>
+    <div class="error-box" id="errorBox" hidden role="alert"></div>
+  </section>
+
+  <div id="emptyState" class="empty-state">
+    <div class="mark" style="margin:0 auto 12px; width:34px;height:34px;border-radius:10px;background:var(--accent);display:grid;place-items:center;color:#fff">▶</div>
+    <strong>粘贴一个 YouTube 视频链接，点「分析」开始</strong>
+    <p>首次分析会自动下载 Twitter-RoBERTa 模型（约 500MB），只需一次。</p>
+  </div>
+
+  <div id="results" hidden>
+    <nav class="side-nav" aria-label="页内导航">
+      <a href="#videoSection">视频</a>
+      <a href="#overviewSection">概览</a>
+      <a href="#distributionSection">情感分布</a>
+      <a href="#deepSection">AI 深度分析</a>
+      <a href="#wordFreqSection">高频词</a>
+      <a href="#repsSection">代表性评论</a>
+      <a href="#tableSection">全部评论</a>
+    </nav>
+    <div class="results-main">
+    <section class="video" id="videoSection">
+      <div class="thumb" id="thumb" aria-hidden="true"></div>
+      <div>
+        <h1 id="videoTitle"></h1>
+        <p class="channel" id="videoChannel"></p>
+        <p class="vmeta" id="videoMeta"></p>
+      </div>
+    </section>
+
+    <div class="toolbar-row">
+      <button id="exportBtn" type="button" class="ghost-btn">⬇ 导出 CSV</button>
+      <span class="toolbar-hint">包含原文、翻译（若已生成）、点赞、情感、把握度、AI 复核理由</span>
+    </div>
+
+    <section class="block" id="overviewSection">
+      <h2>概览</h2>
+      <div class="tiles">
+        <div class="tile">
+          <div class="k">总评论</div>
+          <div class="v mono" id="tTotal">—</div>
+          <div class="s">含回复</div>
+        </div>
+        <div class="tile">
+          <div class="k">平均情感分</div>
+          <div class="v mono" id="tAvg">—</div>
+          <div class="s">范围 −1 ~ +1</div>
+        </div>
+        <div class="tile">
+          <div class="k"><span class="dot pos"></span>正面</div>
+          <div class="v mono" id="tPos">—</div>
+          <div class="s" id="tPosSub">—</div>
+        </div>
+        <div class="tile">
+          <div class="k"><span class="dot neu"></span>中性</div>
+          <div class="v mono" id="tNeu">—</div>
+          <div class="s" id="tNeuSub">—</div>
+        </div>
+        <div class="tile">
+          <div class="k"><span class="dot neg"></span>负面</div>
+          <div class="v mono" id="tNeg">—</div>
+          <div class="s" id="tNegSub">—</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="distributionSection">
+      <h2>情感分布</h2>
+      <div class="panel">
+        <div class="stackbar" role="img" aria-label="情感分布">
+          <span class="seg-pos" id="segPos" style="width:0%"></span>
+          <span class="seg-neu" id="segNeu" style="width:0%"></span>
+          <span class="seg-neg" id="segNeg" style="width:0%"></span>
+        </div>
+        <div class="legend">
+          <span><span class="dot pos"></span>正面 <b id="legPos">—</b></span>
+          <span><span class="dot neu"></span>中性 <b id="legNeu">—</b></span>
+          <span><span class="dot neg"></span>负面 <b id="legNeg">—</b></span>
+        </div>
+        <p class="caveat">判断的是<b>评论文本本身的语气</b>，不是"是否认同视频"——比如视频在批判某件事，评论写"这也太离谱了"是在附和视频，但文本语气本身是负面的，会被计入负面。讽刺、反语也是模型的弱项。下面的 Phase 2 深度分析会结合视频语境判断，能改善这类情况。</p>
+      </div>
+    </section>
+
+    <section class="block" id="deepSection">
+      <h2>AI 深度分析 <span class="tag">Phase 2 · DeepSeek</span></h2>
+      <div class="panel">
+        <div class="deep-row">
+          <div>
+            <p class="deep-desc" id="deepDesc">对把握度较低的评论用 DeepSeek 结合视频标题重新判断，并生成评论区讨论主题总结。</p>
+            <p class="deep-desc muted" id="deepCostNote">这会调用付费 API，每次点击都会真实花费一点点钱（通常几分钱量级）。</p>
+            <label class="lowconf-toggle">
+              <input type="checkbox" id="fullRecheckToggle">
+              复核全部评论，而不只是低把握度的（更准，也更贵更慢）
+            </label>
+          </div>
+          <button id="deepBtn" type="button">🤖 深度分析</button>
+        </div>
+        <div class="progress" id="deepProgress">
+          <div class="progress-track"><div class="progress-fill" id="deepProgressFill"></div></div>
+          <div class="progress-label" id="deepProgressLabel"></div>
+        </div>
+        <div class="error-box" id="deepErrorBox" hidden role="alert"></div>
+        <div id="deepResults" hidden>
+          <p class="deep-summary" id="topicSummary"></p>
+          <div class="themes" id="themeList"></div>
+          <p class="deep-desc muted" id="reclassifiedNote"></p>
+        </div>
+
+        <div class="deep-row translate-row">
+          <div>
+            <p class="deep-desc">把所有评论翻译成中文（用 DeepSeek），翻译完可以一键切换原文/中文显示。</p>
+            <p class="deep-desc muted" id="translateCostNote">这也会调用付费 API，费用跟评论条数相关（几百条评论通常几分钱量级）。</p>
+          </div>
+          <button id="translateBtn" type="button">🌐 翻译成中文</button>
+        </div>
+        <div class="progress" id="translateProgress">
+          <div class="progress-track"><div class="progress-fill" id="translateProgressFill"></div></div>
+          <div class="progress-label" id="translateProgressLabel"></div>
+        </div>
+        <div class="error-box" id="translateErrorBox" hidden role="alert"></div>
+        <div class="translate-done" id="translateDoneNote" hidden>
+          <span>翻译完成，代表性评论 / 全部评论表已经可以切换显示语言。</span>
+          <button id="toggleLangBtn" type="button" class="ghost-btn">显示：原文</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="wordFreqSection">
+      <h2>各情感类别高频词 <span class="tag">粗糙版主题信号，不需要 LLM</span></h2>
+      <div class="panel">
+        <div class="wordcols">
+          <div class="wordcol">
+            <h3><span class="dot pos"></span>正面</h3>
+            <div class="chips" id="wordsPos"></div>
+          </div>
+          <div class="wordcol">
+            <h3><span class="dot neu"></span>中性</h3>
+            <div class="chips" id="wordsNeu"></div>
+          </div>
+          <div class="wordcol">
+            <h3><span class="dot neg"></span>负面</h3>
+            <div class="chips" id="wordsNeg"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="repsSection">
+      <h2>代表性评论</h2>
+      <div class="reps">
+        <div class="repcol">
+          <h2><span class="dot pos"></span>最正面 · 按点赞排序</h2>
+          <ul id="repPos"></ul>
+        </div>
+        <div class="repcol">
+          <h2><span class="dot neg"></span>最负面 · 按点赞排序</h2>
+          <ul id="repNeg"></ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="tableSection">
+      <h2>全部评论</h2>
+      <div class="search-row">
+        <input id="searchBox" type="text" placeholder="搜关键词，比如 bambu lab……看含这个词的评论都是什么情感" aria-label="搜索评论关键词">
+        <button id="searchClear" type="button" hidden>清除</button>
+      </div>
+      <p class="search-stats" id="searchStats" hidden></p>
+      <div class="tctl">
+        <div class="filters" id="filters" role="group" aria-label="按情感筛选">
+          <button data-f="all" aria-pressed="true">全部</button>
+          <button data-f="positive" aria-pressed="false">正面</button>
+          <button data-f="neutral" aria-pressed="false">中性</button>
+          <button data-f="negative" aria-pressed="false">负面</button>
+        </div>
+        <label class="lowconf-toggle">
+          <input type="checkbox" id="lowConfToggle">
+          只看低把握度（&lt;0.6，<span id="lowConfCount">0</span> 条）
+        </label>
+        <p class="thint">展示 <span id="shownCount">0</span> 条 · 点击表头排序</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>作者</th>
+              <th>评论</th>
+              <th class="sortable" data-k="like_count" style="text-align:right">👍 点赞<span class="arrow">▼</span></th>
+              <th class="sortable" data-k="sentiment">情感<span class="arrow">▲▼</span></th>
+              <th class="sortable" data-k="confidence" style="text-align:right" title="模型对这个标签有多确定，不代表判断一定准确">把握度（置信度）<span class="arrow">▲▼</span></th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </section>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <b>Phase 1</b>：抓评论 + Twitter-RoBERTa 本地打分。主题/争议点聚类是 <b>Phase 2</b>（接 Claude）；分享链接给别人用是 <b>Phase 3</b>（部署上线）。过程记录见 <code>YouTube评论情感分析-项目日志.md</code>。
+</footer>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
