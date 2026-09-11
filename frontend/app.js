@@ -31,12 +31,13 @@ const state = {
   sort: { k: "like_count", dir: -1 },
   search: "",
   videoTitle: "",
-  maskUsernames: false,
 };
 
-// 用户名遮蔽：保留开头几个字符（含 @），其余统一换成 3 个星号——不暴露真实长度。
+// 用户名遮蔽：**始终生效，没有开关**（2026-09-12 用户明确要求：默认隐藏，且不可显示原名）。
+// 保留开头几个字符（含 @），其余统一换成 3 个星号——不暴露真实长度。CSV 导出也走这个函数，
+// 所以导出的文件里也是脱敏后的名字，不会绕过这条规则。
 function displayAuthor(author) {
-  if (!state.maskUsernames || !author) return author;
+  if (!author) return author;
   const at = author.startsWith("@") ? "@" : "";
   const rest = at ? author.slice(1) : author;
   return at + rest.slice(0, 2) + "***";
@@ -544,15 +545,6 @@ document.getElementById("themeToggle").addEventListener("click", () => {
   const next =
     cur === "dark" ? "light" : cur === "light" ? "dark" : matchMedia("(prefers-color-scheme: dark)").matches ? "light" : "dark";
   root.setAttribute("data-theme", next);
-});
-
-// 隐藏用户名：截图分享前点一下，遮住评论者用户名中间部分。
-const maskToggle = document.getElementById("maskToggle");
-maskToggle.addEventListener("click", () => {
-  state.maskUsernames = !state.maskUsernames;
-  maskToggle.textContent = state.maskUsernames ? "显示用户名" : "隐藏用户名";
-  renderReps();
-  renderTable();
 });
 
 // ---- 导出 CSV：纯前端生成，不额外调用任何 API，免费瞬间完成 ----
