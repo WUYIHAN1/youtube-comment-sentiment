@@ -208,18 +208,15 @@ section.block{margin-top:30px}
 }
 .toolbar-hint{font-size:.76rem; color:var(--muted)}
 
-.translate-row{margin-top:16px; padding-top:16px; border-top:1px dashed var(--border)}
-#translateBtn{
-  font:inherit; font-weight:600; font-size:.88rem; color:var(--ink); background:var(--surface);
-  border:1px solid var(--border); border-radius:10px; padding:10px 21px; cursor:pointer; white-space:nowrap;
+/* 翻译改成逐条按需（见 renderTable/renderReps 里的 .translate-btn），
+   原来这里"一键全部翻译"的按钮样式已经不再需要，删掉了。 */
+
+.mini-link{
+  font:inherit; font-size:.74rem; color:var(--accent); background:none; border:0;
+  padding:0; cursor:pointer; white-space:nowrap;
 }
-#translateBtn:hover{background:var(--surface-2)}
-#translateBtn:disabled{opacity:.6; cursor:progress}
-.translate-done{
-  margin-top:14px; padding-top:14px; border-top:1px solid var(--border);
-  display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;
-  font-size:.84rem;
-}
+.mini-link:hover{text-decoration:underline}
+.mini-link:disabled{opacity:.6; cursor:progress; text-decoration:none}
 
 .tiles{display:grid; grid-template-columns:repeat(5,1fr); gap:12px}
 .tile{
@@ -306,7 +303,9 @@ td.text .body{
 }
 td.text .body:hover{background:var(--surface-2)}
 td.text .body.expanded{-webkit-line-clamp:unset; display:block; overflow:visible}
-td.text .toggle-hint{display:inline-block; margin-left:6px; font-size:.72rem; color:var(--accent); white-space:nowrap; vertical-align:baseline}
+/* 展开/翻译按钮放在折叠框*外面*（不是里面），长评论被两行截断时它们才不会跟着被裁掉。
+   .expand-btn 默认 hidden，只有 markOverflowingCells() 检测到真的溢出才会显示。 */
+td.text .text-tools{display:flex; gap:10px; margin-top:3px}
 td.text .reply-tag{
   display:inline-block; margin-right:6px; font-size:.68rem; color:var(--muted);
   border:1px solid var(--border); border-radius:5px; padding:0 5px; vertical-align:1px;

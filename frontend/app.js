@@ -8,6 +8,14 @@ const errorBox = document.getElementById("errorBox");
 const emptyState = document.getElementById("emptyState");
 const resultsEl = document.getElementById("results");
 
+// 双保险：字体真正加载完成后（可能晚于第一次渲染）再全量重新判定一次哪些评论被截断了，
+// 避免"用后备字体量出来当时没溢出，换字体后其实溢出了"的情况一直没人发现。
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(() => {
+    if (typeof markOverflowingCells === "function") markOverflowingCells();
+  });
+}
+
 const SENT = {
   positive: { label: "正面", cls: "pos" },
   neutral: { label: "中性", cls: "neu" },
@@ -24,7 +32,6 @@ const state = {
   search: "",
   videoTitle: "",
   maskUsernames: false,
-  showTranslation: false,
 };
 
 // 用户名遮蔽：保留开头几个字符（含 @），其余统一换成 3 个星号——不暴露真实长度。
@@ -35,9 +42,10 @@ function displayAuthor(author) {
   return at + rest.slice(0, 2) + "***";
 }
 
-// 评论展示文本：翻译模式打开且这条有中文翻译时显示中文，否则显示原文。
+// 评论展示文本：这条评论自己翻译过、且当前切到"显示中文"时显示译文，否则显示原文。
+// 逐条翻译（点评论旁边的"翻译"才会调用 API），不是全局一键翻译，所以状态挂在每条评论对象上。
 function displayText(c) {
-  return state.showTranslation && c.text_zh ? c.text_zh : c.text;
+  return c.showZh && c.text_zh ? c.text_zh : c.text;
 }
 
 const searchBox = document.getElementById("searchBox");
@@ -155,9 +163,6 @@ function render(data) {
   searchBox.value = "";
   document.getElementById("lowConfToggle").checked = false;
   fullRecheckToggle.checked = false;
-  state.showTranslation = false;
-  document.getElementById("translateDoneNote").hidden = true;
-  document.getElementById("translateErrorBox").hidden = true;
   document.querySelectorAll("#filters button").forEach((x) => x.setAttribute("aria-pressed", x.dataset.f === "all"));
 
   document.getElementById("videoTitle").textContent = data.video.title;
@@ -337,7 +342,10 @@ function renderReps() {
       .slice(0, 8);
   const card = (c) => `<li class="rep">
       <p class="rep-text">&ldquo;${esc(displayText(c))}&rdquo;</p>
-      <p class="rep-foot"><span class="who">${esc(displayAuthor(c.author))}</span><span>👍 ${nf(c.like_count)}</span><span class="mono">把握度 ${c.confidence.toFixed(2)}</span></p>
+      <p class="rep-foot">
+        <span class="who">${esc(displayAuthor(c.author))}</span><span>👍 ${nf(c.like_count)}</span><span class="mono">把握度 ${c.confidence.toFixed(2)}</span>
+        <button type="button" class="mini-link translate-btn" data-id="${esc(c.id)}">${translateLabel(c)}</button>
+      </p>
     </li>`;
   document.getElementById("repPos").innerHTML =
     top("positive").map(card).join("") || `<li class="rep-empty">暂无正面评论</li>`;
@@ -401,11 +409,15 @@ function renderTable() {
   document.getElementById("tbody").innerHTML = rows
     .map((r) => {
       const s = SENT[r.sentiment];
-      return `<tr>
+      return `<tr data-cid="${esc(r.id)}">
         <td class="author">${esc(displayAuthor(r.author))}</td>
-        <td class="text"><div class="body">${
-        r.is_reply ? '<span class="reply-tag">回复</span>' : ""
-      }${esc(displayText(r))}<span class="toggle-hint">展开</span></div></td>
+        <td class="text">
+          <div class="body">${r.is_reply ? '<span class="reply-tag">回复</span>' : ""}${esc(displayText(r))}</div>
+          <div class="text-tools">
+            <button type="button" class="mini-link expand-btn" hidden>展开</button>
+            <button type="button" class="mini-link translate-btn" data-id="${esc(r.id)}">${translateLabel(r)}</button>
+          </div>
+        </td>
         <td class="num mono">${nf(r.like_count)}</td>
         <td><span class="pill ${s.cls}"><span class="dot ${s.cls}"></span>${s.label}</span>${
         r.reviewed_by ? `<span class="reviewed-badge" title="${esc(r.reason || "")}">AI 复核</span>` : ""
@@ -426,16 +438,39 @@ function renderTable() {
       arrow.textContent = k === "like_count" ? "▼" : "▲▼";
     }
   });
+
+  // 插入 DOM 后立刻同步读 scrollHeight 有时候会踩到"布局还没吃到最终字体宽度"的窗口期
+  // （Google Fonts 还没换上、用后备字体量的尺寸），等一帧再量更保险。
+  requestAnimationFrame(markOverflowingCells);
 }
 
-// 评论正文点击展开/收起（代替原来鼠标悬停的原生 title 提示——那个有延迟、字号也没法改）。
-// 用事件委托绑一次，tbody 每次 renderTable 重新生成内容也照样生效。
+// 长评论被两行折叠后，"展开"提示如果写在被折叠的文字里面，会跟溢出的文字一起被裁掉——
+// 正好在最需要展开的时候消失（2026-09-12 用户反馈的真实 bug）。改法：展开按钮放在折叠框
+// 外面，且只有真的溢出（scrollHeight > clientHeight）才显示，短评论不会出现点了没反应的按钮。
+function markOverflowingCells() {
+  document.querySelectorAll("#tbody tr").forEach((tr) => {
+    const body = tr.querySelector(".text .body");
+    const btn = tr.querySelector(".expand-btn");
+    if (!body || !btn) return;
+    if (body.classList.contains("expanded")) {
+      btn.hidden = false;
+      return;
+    }
+    btn.hidden = body.scrollHeight <= body.clientHeight + 1;
+  });
+}
+
+// 展开/收起：按钮在折叠框外面，点评论正文本身也顺手展开（大目标好点）。
 document.getElementById("tbody").addEventListener("click", (e) => {
-  const body = e.target.closest("td.text .body");
-  if (!body) return;
+  const expandBtn = e.target.closest(".expand-btn");
+  const bodyClicked = e.target.closest("td.text .body");
+  const cell = (expandBtn || bodyClicked) && (expandBtn || bodyClicked).closest("td.text");
+  if (!cell) return;
+  const body = cell.querySelector(".body");
+  const btn = cell.querySelector(".expand-btn");
   const expanded = body.classList.toggle("expanded");
-  const hint = body.querySelector(".toggle-hint");
-  if (hint) hint.textContent = expanded ? "收起" : "展开";
+  btn.hidden = false;
+  btn.textContent = expanded ? "收起" : "展开";
 });
 
 document.getElementById("lowConfToggle").addEventListener("change", (e) => {
@@ -533,69 +568,64 @@ document.getElementById("exportBtn").addEventListener("click", () => {
   URL.revokeObjectURL(url);
 });
 
-// ---- 翻译成中文（DeepSeek）----
-const translateBtn = document.getElementById("translateBtn");
-const translateProgress = document.getElementById("translateProgress");
-const translateProgressFill = document.getElementById("translateProgressFill");
-const translateProgressLabel = document.getElementById("translateProgressLabel");
-const translateErrorBox = document.getElementById("translateErrorBox");
-const translateDoneNote = document.getElementById("translateDoneNote");
-const toggleLangBtn = document.getElementById("toggleLangBtn");
-translateBtn.addEventListener("click", async () => {
-  if (translateBtn.disabled) return;
-  translateErrorBox.hidden = true;
-  translateBtn.disabled = true;
+// ---- 翻译（DeepSeek，逐条按需）----
+// 不再是"一键全部翻译"：每条评论旁边有个小"翻译"链接，点了才翻译这一条，翻完缓存在
+// 评论对象自己身上（c.text_zh / c.showZh），再点就是本地切换、不重复调用 API。
+async function translateOneComment(id) {
+  const c = state.comments.find((x) => x.id === id);
+  if (!c || c.translating) return;
 
-  const steps = ["正在把评论发给 DeepSeek 翻译…", "翻译中…", "整理结果…"];
-  let stepI = 0;
-  translateProgress.classList.add("on");
-  translateProgressFill.style.width = "10%";
-  translateProgressLabel.textContent = steps[0];
-  const stepTimer = setInterval(() => {
-    stepI = Math.min(stepI + 1, steps.length - 1);
-    translateProgressLabel.textContent = steps[stepI];
-    translateProgressFill.style.width = Math.min(88, 15 + stepI * 30) + "%";
-  }, 1800);
+  if (c.text_zh) {
+    c.showZh = !c.showZh;
+    renderReps();
+    renderTable();
+    return;
+  }
+
+  c.translating = true;
+  c.translateError = false;
+  renderReps();
+  renderTable();
 
   try {
-    const payload = {
-      comments: state.comments.map((c) => ({ id: c.id, text: c.text, like_count: c.like_count, confidence: c.confidence })),
-    };
     const res = await fetch("/api/translate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ comments: [{ id: c.id, text: c.text, like_count: c.like_count, confidence: c.confidence }] }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || "翻译失败，请稍后再试");
-
-    const byId = new Map(data.translations.map((t) => [t.id, t.text_zh]));
-    state.comments = state.comments.map((c) => (byId.has(c.id) ? { ...c, text_zh: byId.get(c.id) } : c));
-
-    state.showTranslation = true;
-    toggleLangBtn.textContent = "显示：中文";
-    translateDoneNote.hidden = false;
+    if (!res.ok) throw new Error(data.detail || "翻译失败");
+    const t = data.translations.find((x) => x.id === id);
+    if (!t) throw new Error("DeepSeek 没有返回这条的翻译");
+    c.text_zh = t.text_zh;
+    c.showZh = true;
+  } catch (err) {
+    c.translateError = true;
+  } finally {
+    c.translating = false;
     renderReps();
     renderTable();
-  } catch (err) {
-    translateErrorBox.hidden = false;
-    translateErrorBox.textContent = "⚠ " + err.message;
-  } finally {
-    clearInterval(stepTimer);
-    translateProgressFill.style.width = "100%";
-    setTimeout(() => {
-      translateProgress.classList.remove("on");
-      translateProgressFill.style.width = "0%";
-    }, 250);
-    translateBtn.disabled = false;
+    if (c.translateError) {
+      setTimeout(() => {
+        c.translateError = false;
+        renderReps();
+        renderTable();
+      }, 2500);
+    }
   }
-});
+}
 
-toggleLangBtn.addEventListener("click", () => {
-  state.showTranslation = !state.showTranslation;
-  toggleLangBtn.textContent = state.showTranslation ? "显示：中文" : "显示：原文";
-  renderReps();
-  renderTable();
+function translateLabel(c) {
+  if (c.translating) return "翻译中…";
+  if (c.translateError) return "翻译失败";
+  if (c.text_zh) return c.showZh ? "原文" : "翻译";
+  return "翻译";
+}
+
+// 全部评论表和代表性评论卡片共用同一套"翻译"链接行为，在结果区顶层代理一次就够。
+resultsEl.addEventListener("click", (e) => {
+  const t = e.target.closest(".translate-btn");
+  if (t) translateOneComment(t.dataset.id);
 });
 
 // ---- Phase 2：DeepSeek 深度分析（低把握度复核 / 全量复核 + 主题总结）----
