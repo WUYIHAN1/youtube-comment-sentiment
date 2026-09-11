@@ -334,23 +334,43 @@ function renderWordFreq() {
   }
 }
 
+// 代表性评论每类最多显示 10 条：前 3 条常驻，第 4-10 条折叠起来，点"展开更多"才出现——
+// 列表本来就是按点赞排第一屏最值得看的三条，10 条一起铺开容易变成第二个"全部评论表"。
+const REP_VISIBLE = 3;
+const REP_TOTAL = 10;
+
 function renderReps() {
   const top = (sent) =>
     state.comments
       .filter((c) => c.sentiment === sent)
       .sort((a, b) => b.like_count - a.like_count)
-      .slice(0, 8);
-  const card = (c) => `<li class="rep">
+      .slice(0, REP_TOTAL);
+  const card = (c, extra) => `<li class="rep${extra ? " rep-extra" : ""}"${extra ? " hidden" : ""}>
       <p class="rep-text">&ldquo;${esc(displayText(c))}&rdquo;</p>
       <p class="rep-foot">
         <span class="who">${esc(displayAuthor(c.author))}</span><span>👍 ${nf(c.like_count)}</span><span class="mono">把握度 ${c.confidence.toFixed(2)}</span>
         <button type="button" class="mini-link translate-btn" data-id="${esc(c.id)}">${translateLabel(c)}</button>
       </p>
     </li>`;
-  document.getElementById("repPos").innerHTML =
-    top("positive").map(card).join("") || `<li class="rep-empty">暂无正面评论</li>`;
-  document.getElementById("repNeg").innerHTML =
-    top("negative").map(card).join("") || `<li class="rep-empty">暂无负面评论</li>`;
+
+  const fill = (elId, sent) => {
+    const list = top(sent);
+    const el = document.getElementById(elId);
+    if (!list.length) {
+      el.innerHTML = `<li class="rep-empty">暂无${sent === "positive" ? "正面" : "负面"}评论</li>`;
+      return;
+    }
+    const visible = list.slice(0, REP_VISIBLE).map((c) => card(c, false));
+    const rest = list.slice(REP_VISIBLE);
+    const extraCards = rest.map((c) => card(c, true));
+    const toggle = rest.length
+      ? `<li class="rep-toggle-row"><button type="button" class="mini-link rep-toggle">展开更多（+${rest.length}）</button></li>`
+      : "";
+    el.innerHTML = visible.join("") + extraCards.join("") + toggle;
+  };
+
+  fill("repPos", "positive");
+  fill("repNeg", "negative");
 }
 
 function updateSearchStats() {
@@ -622,10 +642,22 @@ function translateLabel(c) {
   return "翻译";
 }
 
-// 全部评论表和代表性评论卡片共用同一套"翻译"链接行为，在结果区顶层代理一次就够。
+// 全部评论表和代表性评论卡片共用同一套"翻译"链接行为，在结果区顶层代理一次就够；
+// 代表性评论的"展开更多"也在这里一起代理。
 resultsEl.addEventListener("click", (e) => {
   const t = e.target.closest(".translate-btn");
-  if (t) translateOneComment(t.dataset.id);
+  if (t) {
+    translateOneComment(t.dataset.id);
+    return;
+  }
+  const toggle = e.target.closest(".rep-toggle");
+  if (toggle) {
+    const list = toggle.closest("ul");
+    const extras = list.querySelectorAll(".rep-extra");
+    const nowHidden = extras.length && !extras[0].hidden; // 当前是展开状态就收起，反之展开
+    extras.forEach((li) => (li.hidden = nowHidden));
+    toggle.textContent = nowHidden ? `展开更多（+${extras.length}）` : "收起";
+  }
 });
 
 // ---- Phase 2：DeepSeek 深度分析（低把握度复核 / 全量复核 + 主题总结）----

@@ -252,6 +252,7 @@ section.block{margin-top:30px}
 .rep-foot{margin:8px 0 0; display:flex; flex-wrap:wrap; gap:12px; font-size:.76rem; color:var(--muted)}
 .rep-foot .who{color:var(--ink); opacity:.75; font-weight:600}
 .rep-empty{color:var(--muted); font-size:.85rem}
+.rep-toggle-row{border-top:1px solid var(--border); padding-top:12px; text-align:center}
 
 .search-row{display:flex; gap:8px; margin-bottom:10px}
 .search-row input{
