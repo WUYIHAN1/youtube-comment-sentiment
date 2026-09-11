@@ -4,7 +4,9 @@ Phase 1：本地网页 Dashboard。粘贴一个 YouTube 视频链接，抓取评
 本地打情感分，网页展示概览、分布、代表性评论、可排序筛选的全量表。
 
 Phase 2：点「🤖 深度分析」按钮，用 DeepSeek 对把握度低的评论结合视频标题重新判断，并生成
-评论区讨论主题总结（会调用付费 API，手动点击才触发）。
+评论区讨论主题总结；每条评论旁边还有个「翻译」链接，点哪条翻哪条（都是付费 API，手动点击才触发）。
+
+Phase 3：部署上线，让别人打开链接就能用，见下面「部署上线」一节。
 
 需求文档见 [mini-prd.md](mini-prd.md)；过程记录见项目根目录的
 `YouTube评论情感分析-项目日志.md`。
@@ -40,19 +42,77 @@ uvicorn backend.main:app --reload
 > 首次分析会自动下载 Twitter-RoBERTa 模型（`cardiffnlp/twitter-roberta-base-sentiment-latest`，
 > 约 500MB），需要联网，只需一次；之后会缓存在本地（`~/.cache/huggingface`）。
 
+## 部署上线（Phase 3）
+
+托管平台用 **Hugging Face Spaces**（免费、内存比多数免费平台宽裕，跑得动 RoBERTa + torch）。
+Key 策略是"站长自己的 key"——陌生人打开链接用的是你的 YouTube/DeepSeek 配额和余额，所以代码里
+已经加了限流（`backend/budget.py`）：单 IP 滑动窗口 + 每日全局上限，都能用环境变量调，默认值
+偏保守，适合"分享给朋友圈"这个量级，不是为公开无限流量设计的。
+
+**步骤**：
+
+1. 去 huggingface.co 注册/登录，右上角头像 → **New Space**
+2. 起名字，**SDK 选 Docker**，硬件选免费的 CPU basic，可见性按需（Private 只有你能打开，Public 谁都能访问）
+3. 创建后会给你一个 git 仓库地址（`https://huggingface.co/spaces/<你的用户名>/<space名>`），
+   把这个项目推上去：
+   ```bash
+   git remote add hf https://huggingface.co/spaces/<你的用户名>/<space名>
+   git push hf main
+   ```
+4. 在 Space 页面的 **Settings → Repository secrets** 里添加：
+   - `YOUTUBE_API_KEY`
+   - `DEEPSEEK_API_KEY`（不加也行，Phase 2 功能会跳过，Phase 1 照常用）
+5. 等它自动构建（首次构建要下 torch + 模型，得等几分钟），构建完 Space 页面就是能用的网址，
+   可以直接分享这个链接。
+
+> Hugging Face Spaces 有时需要 `README.md` 顶部一段 YAML 元信息才能正确识别成 Docker Space
+> （创建 Space 时网页表单一般会自动帮你生成这段、或者提示你要不要生成）。如果推上去以后 Space
+> 没有按 Dockerfile 构建，去 Space 的文件列表里确认 README.md 最上面有没有类似这样的块，没有就
+> 手动加上：
+> ```yaml
+> ---
+> title: CommentPulse
+> emoji: 💬
+> colorFrom: indigo
+> colorTo: blue
+> sdk: docker
+> app_port: 7860
+> ---
+> ```
+> 这几年 Hugging Face 的具体流程可能会变，实际操作以 Space 创建页面当时的提示为准。
+
+**限流参数**（都是环境变量，可选，不设就用默认值）：
+
+| 变量 | 默认值 | 含义 |
+|---|---|---|
+| `ANALYZE_IP_LIMIT` / `ANALYZE_IP_WINDOW` | 8 次 / 600 秒 | 单 IP 分析请求限流 |
+| `DEEP_IP_LIMIT` / `DEEP_IP_WINDOW` | 5 次 / 3600 秒 | 单 IP 深度分析限流 |
+| `DEEP_DAILY_CAP` | 40 | 深度分析全站每日上限 |
+| `TRANSLATE_IP_LIMIT` / `TRANSLATE_IP_WINDOW` | 30 次 / 3600 秒 | 单 IP 翻译限流 |
+| `TRANSLATE_DAILY_CAP` | 300 | 翻译全站每日上限 |
+
+> `.quota_usage.json`（YouTube 配额估算）和限流计数都是进程内存/本地文件状态，Space 重启或重新
+> 构建会清零——对"挡刷"这个目的够用，只是不追求跨重启精确统计。
+
 ## 目录结构
 
 ```
 youtube-comment-sentiment/
   .env.example          # 环境变量模板，复制成 .env 后填 key
   .gitignore
+  .dockerignore
+  Dockerfile             # Phase 3 部署用，见「部署上线」
   requirements.txt
   README.md
   mini-prd.md
+  demo笔记.md            # 训练营作品展示笔记
   backend/
-    main.py             # FastAPI 应用 + 路由
+    main.py             # FastAPI 应用 + 路由 + 限流接入点
     youtube.py          # 解析链接、调 YouTube Data API v3 抓评论
     sentiment.py         # Twitter-RoBERTa 打分 + 概览统计
+    llm.py               # Phase 2：DeepSeek 复核 / 主题总结 / 翻译
+    quota.py             # YouTube API 配额本地估算
+    budget.py            # Phase 3：限流 + 每日预算
     schema.py            # 接口数据结构（pydantic）
   frontend/
     index.html

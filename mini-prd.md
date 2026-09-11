@@ -31,12 +31,12 @@
   - 概览卡片/分布条用前端重新统计的数字刷新（`computeSummaryClient`，算法跟后端一致）
   - 新增「主题总结」卡片区
 
-### Phase 3 目标（分享上线）
+### Phase 3 目标（分享上线，2026-09-12 开工）
 - 部署到有公网 URL 的 host，**别人打开链接就能看到页面、粘贴视频链接体验分析**，不用自己装环境。
-- key 策略（Phase 3 再定，倾向 A）：
-  - **A. 用站长（你）自己的 key + 限流**：适合分享给朋友/小圈子。每次分析走你的 YouTube 配额、Phase 2 的 Claude 调用花你的钱，所以要加频率限制。
-  - **B. 访客填自己的 key**：UI 上让访客粘贴自己的 YouTube（和 Claude）key，存在他浏览器里、随请求发、不落库。适合真正公开。
-- 为降低 Phase 3 的改造成本，**Phase 1 就遵守**：前后端分离、配置全走 `.env`、`/api/analyze` 接口无状态、不硬编码 `localhost`。
+- **✅ 已定案：托管平台 Hugging Face Spaces（Docker SDK）**——免费、内存比多数免费平台宽裕，装得下 torch + RoBERTa；`Dockerfile` 已写好，构建阶段预下载模型（不让第一个访客等下载）。
+- key 策略：**✅ 已定案走 A**（用站长自己的 key + 限流），适合分享给朋友/小圈子，不做访客自带 key 的 B 方案。
+- **✅ 已实现限流**（`backend/budget.py`）：单 IP 滑动窗口限流 + 每日全站调用上限，覆盖 `/api/analyze`、`/api/deep-analyze`、`/api/translate` 三个接口，参数都能用环境变量调，浏览器 + curl 压测过确认真的会拦（默认参数下正常压测未触发，人为调低限额后第 3 次请求起返回 429）。
+- 为降低 Phase 3 的改造成本，**Phase 1 就遵守**：前后端分离、配置全走 `.env`、`/api/analyze` 接口无状态、不硬编码 `localhost`——这个约定在这次部署准备里验证是有效的，没有为了上线大改架构。
 
 ### 非目标（明确不做）
 - 不做多语言分支，按英文评论为主处理。
@@ -191,7 +191,7 @@ youtube-comment-sentiment/
 | M3 | ✅ 打磨 | 全量表排序筛选、错误处理、README，浏览器实测通过 |
 | —— | ✅ **Phase 1 完成**（2026-09-11） | 第 8 节 4 条验收标准全部通过 |
 | M4 | ✅ Phase 2 v1 | 接 DeepSeek，低把握度评论复核 + 主题总结，代码写完 + 浏览器实测（无 key 时的错误提示）通过；**待办：装 `openai` 包 + 申请 DeepSeek key + 真实跑一次看效果质量** |
-| M5 | Phase 3：上线 | 部署到公网 host，别人打开链接即可粘贴视频链接体验；加频率限制 |
+| M5 | 🔨 Phase 3：上线 | 代码侧（限流、Dockerfile）已就绪；**待办**：用户去 Hugging Face 建 Space、推代码、配 secrets、拿到公网链接 |
 
 ## 10. 风险 & 开放问题
 
@@ -204,6 +204,6 @@ youtube-comment-sentiment/
 | 4 | 用户还没有 YouTube Data API key | 待用户申请；代码里用 `.env.example` 占位 |
 | 5 | 情感区评论掺杂大量 spam / 引流 | Phase 1 不处理；记为 Phase 2 候选功能 |
 | 6 | 平均情感分怎么算才直观 | 初版：positive=+1, neutral=0, negative=-1 按条数加权取均值，范围 -1~+1 |
-| 7 | Phase 3 上线后配额/费用被访客消耗（YouTube 每日 1 万单位、Claude 按次计费） | key 策略 A + 频率限制（每 IP 每小时 N 次）；或改策略 B 让访客带自己的 key |
-| 8 | Phase 3 服务器要常驻加载模型，吃内存 | 选能常驻的 host（Render / Railway / Fly.io / HF Spaces）；小实例够跑 RoBERTa CPU 推理 |
-| 9 | Phase 3 host 冷启动 / 首次下模型慢 | 选不会休眠的套餐，或加一个「预热」健康检查 |
+| 7 | ~~Phase 3 上线后配额/费用被访客消耗~~ | ✅ 已实现：`backend/budget.py` 单 IP 限流 + 每日全站上限，覆盖三个花钱/花配额的接口 |
+| 8 | Phase 3 服务器要常驻加载模型，吃内存 | ✅ 选定 HF Spaces（免费档内存比多数平台宽裕）；Dockerfile 在构建阶段预下载模型，不用运行时现下 |
+| 9 | Phase 3 host 冷启动 / 首次下模型慢 | ✅ Dockerfile 构建时预下载模型解决了"首次访客等下载"，HF Spaces 免费 CPU 档具体是否会休眠待实测确认 |

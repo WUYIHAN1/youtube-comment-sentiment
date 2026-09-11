@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import quota
+from . import budget, quota
 from .llm import LLMError, reclassify_comments, summarize_topics, translate_comments
 from .schema import (
     AnalyzeRequest,
@@ -59,9 +59,13 @@ app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
 
 
 @app.post("/api/analyze", response_model=AnalyzeResponse)
-def analyze(req: AnalyzeRequest):
+def analyze(req: AnalyzeRequest, request: Request):
     if not API_KEY:
         raise HTTPException(500, "服务器未配置 YOUTUBE_API_KEY，请检查项目根目录的 .env 文件")
+
+    ip = budget.client_ip(request)
+    if not budget.check_ip_limit("analyze", ip, budget.ANALYZE_IP_LIMIT, budget.ANALYZE_IP_WINDOW):
+        raise HTTPException(429, "请求太频繁，歇一会儿再试")
 
     video_id = extract_video_id(req.url)
     if not video_id:
@@ -84,9 +88,15 @@ def analyze(req: AnalyzeRequest):
 
 
 @app.post("/api/deep-analyze", response_model=DeepAnalyzeResponse)
-def deep_analyze(req: DeepAnalyzeRequest):
+def deep_analyze(req: DeepAnalyzeRequest, request: Request):
     if not DEEPSEEK_KEY_SET:
         raise HTTPException(500, "服务器未配置 DEEPSEEK_API_KEY，请检查 .env 文件")
+
+    ip = budget.client_ip(request)
+    if not budget.check_ip_limit("deep_analyze", ip, budget.DEEP_IP_LIMIT, budget.DEEP_IP_WINDOW):
+        raise HTTPException(429, "深度分析请求太频繁，歇一会儿再试")
+    if not budget.check_daily_cap("deep_analyze", budget.DEEP_DAILY_CAP):
+        raise HTTPException(429, "今天的深度分析额度已经用完了，明天再来")
 
     all_comments = [c.model_dump() for c in req.comments]
     to_review = all_comments if req.full_recheck else [c for c in all_comments if c["confidence"] < LOW_CONF_THRESHOLD]
@@ -101,11 +111,18 @@ def deep_analyze(req: DeepAnalyzeRequest):
 
 
 @app.post("/api/translate", response_model=TranslateResponse)
-def translate(req: TranslateRequest):
+def translate(req: TranslateRequest, request: Request):
     if not DEEPSEEK_KEY_SET:
         raise HTTPException(500, "服务器未配置 DEEPSEEK_API_KEY，请检查 .env 文件")
     if not req.comments:
         return {"translations": []}
+
+    ip = budget.client_ip(request)
+    if not budget.check_ip_limit("translate", ip, budget.TRANSLATE_IP_LIMIT, budget.TRANSLATE_IP_WINDOW):
+        raise HTTPException(429, "翻译请求太频繁，歇一会儿再试")
+    if not budget.check_daily_cap("translate", budget.TRANSLATE_DAILY_CAP):
+        raise HTTPException(429, "今天的翻译额度已经用完了，明天再来")
+
     try:
         translations = translate_comments([c.model_dump() for c in req.comments])
     except LLMError as e:
