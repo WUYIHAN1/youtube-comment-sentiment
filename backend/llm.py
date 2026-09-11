@@ -34,8 +34,11 @@ def _get_client():
 
 
 def _chat_json(client, system: str, user: str) -> dict:
-    """发一次请求，要求模型只回 JSON，解析失败就抛 LLMError（不悄悄吞掉、不瞎猜）。"""
-    from openai import APIError
+    """发一次请求，要求模型只回 JSON，解析失败就抛 LLMError（不悄悄吞掉、不瞎猜）。
+    错误按"最具体优先"分类处理，别用一个大 except 把连不上网、key 错了、限流都糊成一句话——
+    那样用户没法知道该做什么（重试？检查网络？还是充值？）。
+    """
+    from openai import APIConnectionError, APIError, APIStatusError, AuthenticationError, RateLimitError
 
     try:
         resp = client.chat.completions.create(
@@ -47,6 +50,18 @@ def _chat_json(client, system: str, user: str) -> dict:
             response_format={"type": "json_object"},
             temperature=0.2,
         )
+    except APIConnectionError:
+        raise LLMError(
+            "connection_error",
+            "连不上 DeepSeek 服务器，像是网络问题（这台机器的网络/VPN 有时会临时抖动）。"
+            "过几秒重试一次；如果一直失败，检查一下网络连接或断开/切换 VPN 再试。",
+        )
+    except AuthenticationError:
+        raise LLMError("auth_error", "DeepSeek key 无效，检查 .env 里的 DEEPSEEK_API_KEY 是不是填对了")
+    except RateLimitError:
+        raise LLMError("rate_limit", "DeepSeek 请求太频繁，或者账户余额不足，稍等一下或去充值后再试")
+    except APIStatusError as e:
+        raise LLMError("api_error", f"DeepSeek 返回错误（状态码 {e.status_code}）：{e.message}")
     except APIError as e:
         raise LLMError("api_error", f"调用 DeepSeek 出错：{e}")
 
