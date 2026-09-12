@@ -27,7 +27,7 @@ from .youtube import YouTubeError, build_client, extract_video_id, fetch_comment
 load_dotenv()
 
 API_KEY = os.getenv("YOUTUBE_API_KEY", "").strip()
-MAX_TOP_LEVEL = int(os.getenv("MAX_TOP_LEVEL_COMMENTS", "500"))
+MAX_TOP_LEVEL = int(os.getenv("MAX_TOP_LEVEL_COMMENTS", "1000"))
 DEEPSEEK_KEY_SET = bool(os.getenv("DEEPSEEK_API_KEY", "").strip())
 
 # 跟 frontend/app.js 的 LOW_CONF_THRESHOLD 保持一致：低于这个把握度的评论才送去复核。

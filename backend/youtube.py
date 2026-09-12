@@ -149,7 +149,7 @@ def _fetch_remaining_replies(youtube, parent_id: str, already_have: set) -> list
 MAX_BACKFILL_THREADS_PER_ANALYSIS = 30
 
 
-def fetch_comments(api_key: str, video_id: str, max_top_level: int = 500) -> list[dict]:
+def fetch_comments(api_key: str, video_id: str, max_top_level: int = 1000) -> list[dict]:
     """抓评论：按热门排序（relevance），含回复。回复数缺口不大（<= REPLY_BACKFILL_THRESHOLD）
     的楼层会补全，但整次分析最多补 MAX_BACKFILL_THREADS_PER_ANALYSIS 个楼层——防止
     "多数楼层都有点小缺口"的视频因为要发很多次顺序请求而拖慢整个分析（2026-09-11 踩坑，
