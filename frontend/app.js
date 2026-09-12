@@ -33,6 +33,53 @@ const state = {
   videoTitle: "",
 };
 
+// ---- 历史记录：纯前端存 localStorage，只存标题/封面这类轻量信息，不缓存评论数据 ----
+// 点历史记录里的某一条等于重新分析一次（会再花一次 YouTube/DeepSeek 调用），不是读缓存。
+const HISTORY_KEY = "commentpulse_history";
+const HISTORY_MAX = 20;
+
+function loadHistory() {
+  try {
+    return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function saveHistoryEntry(video) {
+  try {
+    const list = loadHistory().filter((h) => h.id !== video.id);
+    list.unshift({ id: video.id, title: video.title, thumbnail: video.thumbnail });
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(list.slice(0, HISTORY_MAX)));
+  } catch {
+    // 存储失败（比如隐私模式）不影响主流程，安静跳过
+  }
+  renderHistory();
+}
+
+function renderHistory() {
+  const list = loadHistory();
+  document.getElementById("historyBar").hidden = list.length === 0;
+  document.getElementById("historyList").innerHTML = list
+    .map(
+      (h) => `
+      <button type="button" class="history-item" data-id="${esc(h.id)}" title="${esc(h.title)}">
+        <span class="history-thumb" style="${h.thumbnail ? `background-image:url('${esc(h.thumbnail)}')` : ""}"></span>
+        <span class="history-title">${esc(h.title)}</span>
+      </button>`
+    )
+    .join("");
+}
+
+document.getElementById("historyList").addEventListener("click", (e) => {
+  const item = e.target.closest(".history-item");
+  if (!item) return;
+  urlInput.value = `https://www.youtube.com/watch?v=${item.dataset.id}`;
+  form.requestSubmit();
+});
+
+renderHistory();
+
 // 用户名遮蔽：**始终生效，没有开关**（2026-09-12 用户明确要求：默认隐藏，且不可显示原名）。
 // 保留开头几个字符（含 @），其余统一换成 3 个星号——不暴露真实长度。CSV 导出也走这个函数，
 // 所以导出的文件里也是脱敏后的名字，不会绕过这条规则。
@@ -170,6 +217,7 @@ function render(data) {
   }
 
   state.videoTitle = data.video.title;
+  saveHistoryEntry(data.video);
   renderSummary(data.summary);
   renderReps();
   renderWordFreq();
@@ -273,7 +321,10 @@ const STOPWORDS = new Set(
 function countWords(comments) {
   const counts = new Map();
   for (const c of comments) {
-    const raw = c.text.toLowerCase().match(/[a-z']{3,}/g) || [];
+    const raw = c.text
+      .toLowerCase()
+      .replace(/https?:\/\/\S+/g, " ") // 链接会被拆成一堆无意义的路径片段挤进高频词，先整段剔除
+      .match(/[a-z']{3,}/g) || [];
     const seen = new Set();
     for (let i = 0; i < raw.length; i++) {
       const w = raw[i];

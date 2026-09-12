@@ -46,15 +46,21 @@
   </div>
 
   <div id="results" hidden>
-    <nav class="side-nav" aria-label="页内导航">
-      <a href="#videoSection">视频</a>
-      <a href="#overviewSection">概览</a>
-      <a href="#distributionSection">情感分布</a>
-      <a href="#deepSection">AI 深度分析</a>
-      <a href="#wordFreqSection">高频词</a>
-      <a href="#repsSection">代表性评论</a>
-      <a href="#tableSection">全部评论</a>
-    </nav>
+    <div class="side-col">
+      <nav class="side-nav" aria-label="页内导航">
+        <a href="#videoSection">视频</a>
+        <a href="#overviewSection">概览</a>
+        <a href="#distributionSection">情感分布</a>
+        <a href="#deepSection">AI 深度分析</a>
+        <a href="#wordFreqSection">高频词</a>
+        <a href="#repsSection">代表性评论</a>
+        <a href="#tableSection">全部评论</a>
+      </nav>
+      <div class="history-bar" id="historyBar" hidden>
+        <h2>历史记录</h2>
+        <div class="history-list-vertical" id="historyList"></div>
+      </div>
+    </div>
     <div class="results-main">
     <section class="video" id="videoSection">
       <div class="thumb" id="thumb" aria-hidden="true"></div>
@@ -126,7 +132,7 @@
             <p class="deep-desc" id="deepDesc">对把握度较低的评论用 DeepSeek 结合视频标题重新判断，并生成评论区讨论主题总结。</p>
             <label class="lowconf-toggle">
               <input type="checkbox" id="fullRecheckToggle">
-              复核全部评论（需要稍等片刻）
+              复核所有评论（可选）
             </label>
           </div>
           <button id="deepBtn" type="button">🤖 深度分析</button>
