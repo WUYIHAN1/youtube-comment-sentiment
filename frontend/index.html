@@ -16,14 +16,13 @@
       <svg viewBox="0 0 24 24" fill="none"><path d="M4 5h16v11H8l-4 4V5Z" fill="currentColor"/><path d="M8.5 10.5h7M8.5 13h4" stroke="#4f46e5" stroke-width="1.6" stroke-linecap="round"/></svg>
     </span>
     CommentPulse
-    <span class="env-tag">Phase 1</span>
   </div>
   <div class="topbar-right">
     <div class="quota-pill" id="quotaPill" title="YouTube API 每日配额用量（本地估算，非 Google 官方数字）" hidden>
-      <span id="quotaText">配额 —</span>
+      <span id="quotaText">查询余额 —</span>
       <span class="quota-bar"><span class="quota-bar-fill" id="quotaBarFill"></span></span>
     </div>
-    <button class="theme-btn" id="themeToggle" type="button">切换主题</button>
+    <button class="theme-btn" id="themeToggle" type="button"></button>
   </div>
 </header>
 
@@ -115,20 +114,19 @@
           <span><span class="dot neu"></span>中性 <b id="legNeu">—</b></span>
           <span><span class="dot neg"></span>负面 <b id="legNeg">—</b></span>
         </div>
-        <p class="caveat">判断的是<b>评论文本本身的语气</b>，不是"是否认同视频"——比如视频在批判某件事，评论写"这也太离谱了"是在附和视频，但文本语气本身是负面的，会被计入负面。讽刺、反语也是模型的弱项。下面的 Phase 2 深度分析会结合视频语境判断，能改善这类情况。</p>
+        <p class="caveat">判断的是<b>评论文本本身的语气</b>，不是"是否认同视频"——比如视频在批判某件事，评论写"这也太离谱了"是在附和视频，但文本语气本身是负面的，会被计入负面。讽刺、反语也是模型的弱项。下面的 AI 深度分析会结合视频语境判断，能改善这类情况。</p>
       </div>
     </section>
 
     <section class="block" id="deepSection">
-      <h2>AI 深度分析 <span class="tag">Phase 2 · DeepSeek</span></h2>
+      <h2>AI 深度分析 <span class="tag">DeepSeek</span></h2>
       <div class="panel">
         <div class="deep-row">
           <div>
             <p class="deep-desc" id="deepDesc">对把握度较低的评论用 DeepSeek 结合视频标题重新判断，并生成评论区讨论主题总结。</p>
-            <p class="deep-desc muted" id="deepCostNote">这会调用付费 API，每次点击都会真实花费一点点钱（通常几分钱量级）。</p>
             <label class="lowconf-toggle">
               <input type="checkbox" id="fullRecheckToggle">
-              复核全部评论，而不只是低把握度的（更准，也更贵更慢）
+              复核全部评论（需要稍等片刻）
             </label>
           </div>
           <button id="deepBtn" type="button">🤖 深度分析</button>
@@ -167,7 +165,7 @@
     </section>
 
     <section class="block" id="repsSection">
-      <h2>代表性评论</h2>
+      <h2>代表性评论（点赞数Top10）</h2>
       <div class="reps">
         <div class="repcol">
           <h2><span class="dot pos"></span>最正面 · 按点赞排序</h2>
@@ -218,10 +216,6 @@
     </div>
   </div>
 </div>
-
-<footer>
-  <b>Phase 1</b>：抓评论 + Twitter-RoBERTa 本地打分。主题/争议点聚类是 <b>Phase 2</b>（接 Claude）；分享链接给别人用是 <b>Phase 3</b>（部署上线）。过程记录见 <code>YouTube评论情感分析-项目日志.md</code>。
-</footer>
 
 <script src="/static/app.js"></script>
 </body>

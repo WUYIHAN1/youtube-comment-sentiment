@@ -54,10 +54,6 @@ h1,h2{font-family:"Archivo","IBM Plex Sans",system-ui,sans-serif; text-wrap:bala
   display:grid; place-items:center; color:var(--accent-ink); flex:none;
 }
 .brand .mark svg{width:15px; height:15px; display:block}
-.brand .env-tag{
-  margin-left:2px; font-size:.66rem; font-weight:600; color:var(--muted);
-  border:1px solid var(--border); border-radius:999px; padding:2px 8px; letter-spacing:.02em;
-}
 .theme-btn{
   font:inherit; font-size:.82rem; color:var(--muted); background:var(--surface);
   border:1px solid var(--border); border-radius:999px; padding:6px 14px; cursor:pointer;

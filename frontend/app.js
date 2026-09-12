@@ -61,22 +61,13 @@ const deepErrorBox = document.getElementById("deepErrorBox");
 const deepResults = document.getElementById("deepResults");
 const fullRecheckToggle = document.getElementById("fullRecheckToggle");
 
-// 跟 backend/llm.py 的 RECLASSIFY_BATCH_SIZE 保持一致，只用来估算显示，不影响实际请求。
-const DEEP_BATCH_SIZE = 40;
-
 function updateDeepEstimate() {
   const total = state.comments.length;
   const lowConf = state.comments.filter((c) => c.confidence < LOW_CONF_THRESHOLD).length;
   const full = fullRecheckToggle.checked;
-  const n = full ? total : lowConf;
-  const batches = n ? Math.ceil(n / DEEP_BATCH_SIZE) + 1 : 1; // +1 是主题总结那次调用
   document.getElementById("deepDesc").textContent = full
     ? `对全部 ${nf(total)} 条评论用 DeepSeek 结合视频标题重新判断，并生成评论区讨论主题总结。`
     : `对把握度较低的 ${nf(lowConf)} 条评论用 DeepSeek 结合视频标题重新判断，并生成评论区讨论主题总结。`;
-  document.getElementById("deepCostNote").textContent =
-    `这会调用付费 API，预计发 ${batches} 批请求` +
-    (full && total > 200 ? "，评论比较多，可能要等 1 分钟以上" : "") +
-    "，每次点击都会真实花费一点点钱。";
 }
 fullRecheckToggle.addEventListener("change", updateDeepEstimate);
 
@@ -148,7 +139,7 @@ async function refreshQuota() {
     const pill = document.getElementById("quotaPill");
     pill.hidden = false;
     pill.classList.toggle("warn", pct >= 80);
-    document.getElementById("quotaText").textContent = `配额 ${nf(q.used)}/${nf(q.cap)}`;
+    document.getElementById("quotaText").textContent = `查询余额 ${nf(q.used)}/${nf(q.cap)}`;
     document.getElementById("quotaBarFill").style.width = pct + "%";
   } catch (err) {
     // 配额面板只是个参考信息，查不到就悄悄跳过，不打扰主流程
@@ -216,7 +207,7 @@ function setupSideNav() {
   });
 }
 
-// 概览卡片 + 分布条 + 图例。抽成独立函数是因为 Phase 2 深度分析改完标签后，
+// 概览卡片 + 分布条 + 图例。抽成独立函数是因为 AI 深度分析改完标签后，
 // 要用同一套渲染逻辑刷新这些数字（数据来源从「服务器返回的 summary」变成「前端自己重新统计」）。
 function renderSummary(summary) {
   document.getElementById("tTotal").textContent = nf(summary.total);
@@ -539,12 +530,22 @@ document.querySelectorAll("th.sortable").forEach((th) => {
   });
 });
 
+// 按钮文案是"点了会切到哪个模式"，不是"当前是什么模式"——所以显示的永远是下一个状态。
+function currentTheme() {
+  const attr = document.documentElement.getAttribute("data-theme");
+  return attr || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+}
+function updateThemeBtnLabel() {
+  document.getElementById("themeToggle").textContent =
+    currentTheme() === "dark" ? "☀️ 白天模式" : "🌙 夜晚模式";
+}
+updateThemeBtnLabel();
+
 document.getElementById("themeToggle").addEventListener("click", () => {
   const root = document.documentElement;
-  const cur = root.getAttribute("data-theme");
-  const next =
-    cur === "dark" ? "light" : cur === "light" ? "dark" : matchMedia("(prefers-color-scheme: dark)").matches ? "light" : "dark";
+  const next = currentTheme() === "dark" ? "light" : "dark";
   root.setAttribute("data-theme", next);
+  updateThemeBtnLabel();
 });
 
 // ---- 导出 CSV：纯前端生成，不额外调用任何 API，免费瞬间完成 ----
@@ -652,7 +653,7 @@ resultsEl.addEventListener("click", (e) => {
   }
 });
 
-// ---- Phase 2：DeepSeek 深度分析（低把握度复核 / 全量复核 + 主题总结）----
+// ---- AI 深度分析：DeepSeek（低把握度复核 / 全量复核 + 主题总结）----
 // 这是个要点一下才会花钱的动作，绝不在页面加载或普通分析时自动触发。
 deepBtn.addEventListener("click", async () => {
   if (deepBtn.disabled) return;
@@ -719,7 +720,7 @@ deepBtn.addEventListener("click", async () => {
       .join("");
     const scope = full ? "全部" : "低把握度";
     document.getElementById("reclassifiedNote").textContent = data.reclassified.length
-      ? `已用 DeepSeek 重新判断了 ${data.reclassified.length} 条${scope}评论（表格里标了「AI 复核」，鼠标放上去看理由）。`
+      ? `已用 DeepSeek 重新判断了 ${data.reclassified.length} 条${scope}评论。`
       : `这次没有需要复核的${scope}评论。`;
     deepResults.hidden = false;
   } catch (err) {
