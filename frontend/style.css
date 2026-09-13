@@ -206,7 +206,12 @@ section.block{margin-top:30px}
 .theme-card{
   background:var(--surface-2); border-radius:10px; padding:12px 14px;
 }
+.theme-card.pos{background:var(--pos-soft)}
+.theme-card.neu{background:var(--neu-soft)}
+.theme-card.neg{background:var(--neg-soft)}
 .theme-card .t-title{font-size:.85rem; font-weight:700; margin-bottom:4px}
+.theme-card.pos .t-title{color:var(--pos-ink)}
+.theme-card.neg .t-title{color:var(--neg-ink)}
 .theme-card .t-desc{font-size:.8rem; color:var(--muted); line-height:1.6}
 
 .reviewed-badge{

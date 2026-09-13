@@ -142,13 +142,20 @@ def translate_comments(comments: list[dict]) -> list[dict]:
     return results
 
 
+TOPIC_THEME_COUNT_THRESHOLD = 200  # 评论数超过这个数就要求更多主题，评论少时硬凑够 9 个反而会拆得很碎
+TOPIC_THEME_COUNT_MANY = 9
+TOPIC_THEME_COUNT_FEW = 6
+
+
 def summarize_topics(comments: list[dict], video_title: str) -> dict:
     """对评论区做主题总结。取点赞最高的一批评论（不分情感类别）作代表样本，控制 token 成本。
-    返回 {"summary": str, "themes": [{"title": str, "description": str}]}。
+    评论区讨论越热闹（总评论数越多），值得拆出的主题数量也应该越多。
+    返回 {"summary": str, "themes": [{"title": str, "description": str, "tone": str}]}。
     """
     client = _get_client()
     sample = sorted(comments, key=lambda c: c.get("like_count", 0), reverse=True)[:TOPIC_SAMPLE_SIZE]
     numbered = "\n".join(f'- ({c.get("like_count", 0)} 👍) "{c["text"]}"' for c in sample)
+    theme_count = TOPIC_THEME_COUNT_MANY if len(comments) > TOPIC_THEME_COUNT_THRESHOLD else TOPIC_THEME_COUNT_FEW
 
     system = (
         "You analyze a YouTube video's comment section and summarize what viewers are "
@@ -159,10 +166,14 @@ def summarize_topics(comments: list[dict], video_title: str) -> dict:
     user = (
         f'Video title: "{video_title}"\n\n'
         "Here are the most-liked comments from the comment section (like count is shown). "
-        "Identify 3 to 5 concrete discussion themes and write a short overall summary.\n\n"
+        f"Identify exactly {theme_count} concrete discussion themes and write a short overall "
+        "summary. For each theme, also judge its overall emotional tone based on the comments "
+        "that make it up — positive（力挺/认可/感谢类）, negative（批评/吐槽/失望类）, or neutral"
+        "（客观讨论、信息分享、观点不明确偏向类，不要为了凑数硬套成正面或负面）。\n\n"
         "Return JSON exactly in this shape:\n"
         '{"summary": "<2-3 句话总述评论区整体在聊什么、氛围如何>", '
-        '"themes": [{"title": "<4-8字的主题标签>", "description": "<1-2句说明，可引用原文>"}]}\n\n'
+        '"themes": [{"title": "<4-8字的主题标签>", "description": "<1-2句说明，可引用原文>", '
+        '"tone": "positive|neutral|negative"}]}\n\n'
         f"Comments:\n{numbered}"
     )
     data = _chat_json(client, system, user)

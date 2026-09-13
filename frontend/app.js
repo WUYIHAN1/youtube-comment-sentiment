@@ -766,7 +766,7 @@ deepBtn.addEventListener("click", async () => {
     document.getElementById("themeList").innerHTML = data.topics.themes
       .map(
         (t) =>
-          `<div class="theme-card"><div class="t-title">${esc(t.title)}</div><div class="t-desc">${esc(t.description)}</div></div>`
+          `<div class="theme-card ${SENT[t.tone].cls}"><div class="t-title">${esc(t.title)}</div><div class="t-desc">${esc(t.description)}</div></div>`
       )
       .join("");
     const scope = full ? "全部" : "低把握度";

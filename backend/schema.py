@@ -74,6 +74,7 @@ class ReclassifiedComment(BaseModel):
 class Theme(BaseModel):
     title: str
     description: str
+    tone: Literal["positive", "neutral", "negative"]  # 这个主题讨论呈现的整体情绪色彩
 
 
 class TopicSummary(BaseModel):
