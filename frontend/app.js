@@ -17,11 +17,12 @@ if (document.fonts && document.fonts.ready) {
 }
 
 const SENT = {
-  positive: { label: "正面", cls: "pos" },
-  neutral: { label: "中性", cls: "neu" },
-  negative: { label: "负面", cls: "neg" },
+  positive: { label: cpText("正面", "Positive"), cls: "pos" },
+  neutral: { label: cpText("中性", "Neutral"), cls: "neu" },
+  negative: { label: cpText("负面", "Negative"), cls: "neg" },
 };
-const nf = (n) => Number(n).toLocaleString("en-US");
+const nf = (n) => Number(n).toLocaleString(cpLocale);
+const translationField = cpText("text_zh", "text_en");
 const esc = (s) =>
   String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
@@ -93,7 +94,7 @@ function displayAuthor(author) {
 // 评论展示文本：这条评论自己翻译过、且当前切到"显示中文"时显示译文，否则显示原文。
 // 逐条翻译（点评论旁边的"翻译"才会调用 API），不是全局一键翻译，所以状态挂在每条评论对象上。
 function displayText(c) {
-  return c.showZh && c.text_zh ? c.text_zh : c.text;
+  return c.showTranslation && c[translationField] ? c[translationField] : c.text;
 }
 
 const searchBox = document.getElementById("searchBox");
@@ -113,14 +114,14 @@ function updateDeepEstimate() {
   const lowConf = state.comments.filter((c) => c.confidence < LOW_CONF_THRESHOLD).length;
   const full = fullRecheckToggle.checked;
   document.getElementById("deepDesc").textContent = full
-    ? `对全部 ${nf(total)} 条评论用 DeepSeek 结合视频标题重新判断，并生成评论区讨论主题总结。`
-    : `对把握度较低的 ${nf(lowConf)} 条评论用 DeepSeek 结合视频标题重新判断，并生成评论区讨论主题总结。`;
+    ? `${cpText("对全部 ", "Review all ")}${nf(total)}${cpText(" 条评论用 DeepSeek 结合视频标题重新判断，并生成评论区讨论主题总结。", " comments with DeepSeek using the video title, and summarize the main topics.")}`
+    : `${cpText("对把握度较低的 ", "Review ")}${nf(lowConf)}${cpText(" 条评论用 DeepSeek 结合视频标题重新判断，并生成评论区讨论主题总结。", " low-confidence comments with DeepSeek using the video title, and summarize the main topics.")}`;
 }
 fullRecheckToggle.addEventListener("change", updateDeepEstimate);
 
 // ---- 进度动画（真实进度拿不到具体百分比，用轮播文案表达当前阶段）----
 let progTimer = null;
-const STEPS = ["正在解析视频…", "正在抓取评论（含回复）…", "本地 Twitter-RoBERTa 打分中…", "整理结果…"];
+const STEPS = [cpText("正在解析视频…", "Reading video link…"), cpText("正在抓取评论（含回复）…", "Fetching comments and replies…"), cpText("本地 Twitter-RoBERTa 打分中…", "Scoring comments with Twitter-RoBERTa…"), cpText("整理结果…", "Preparing results…")];
 
 function startProgress() {
   prog.classList.add("on");
@@ -148,9 +149,9 @@ async function readApiResponse(res) {
   try {
     data = await res.json();
   } catch {
-    throw new Error(`服务器响应异常（HTTP ${res.status}），请稍后重试`);
+    throw new Error(`${cpText("服务器响应异常（HTTP ", "Unexpected server response (HTTP ")}${res.status}${cpText("），请稍后重试", "). Please try again.")}`);
   }
-  if (!res.ok) throw new Error(data.detail || `请求失败（HTTP ${res.status}）`);
+  if (!res.ok) throw new Error(data.detail || `${cpText("请求失败（HTTP ", "Request failed (HTTP ")}${res.status}${cpText("）", ")")}`);
   return data;
 }
 
@@ -166,12 +167,12 @@ form.addEventListener("submit", async (e) => {
   try {
     const res = await fetch("/api/analyze", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: cpApiHeaders,
       body: JSON.stringify({ url }),
     });
     const data = await readApiResponse(res);
     if (!res.ok) {
-      throw new Error(data.detail || "分析失败，请稍后再试");
+      throw new Error(data.detail || cpText("分析失败，请稍后再试", "Analysis failed. Please try again."));
     }
     render(data);
     refreshQuota();
@@ -197,7 +198,7 @@ async function refreshQuota() {
     const pill = document.getElementById("quotaPill");
     pill.hidden = false;
     pill.classList.toggle("warn", pct >= 80);
-    document.getElementById("quotaText").textContent = `查询余额 ${nf(q.used)}/${nf(q.cap)}`;
+    document.getElementById("quotaText").textContent = `${cpText("查询余额 ", "Quota used ")}${nf(q.used)}/${nf(q.cap)}`;
     document.getElementById("quotaBarFill").style.width = pct + "%";
   } catch (err) {
     // 配额面板只是个参考信息，查不到就悄悄跳过，不打扰主流程
@@ -220,7 +221,7 @@ function render(data) {
   document.getElementById("videoChannel").textContent = data.video.channel;
   document.getElementById(
     "videoMeta"
-  ).textContent = `已分析 ${nf(data.summary.total)} 条评论（含回复）· 浏览 ${data.video.view_count == null ? "未获取" : nf(data.video.view_count)} · 视频点赞 ${data.video.like_count == null ? "未公开／未获取" : nf(data.video.like_count)} · 按「热门」排序`;
+  ).textContent = `${cpText("已分析 ", "Analyzed ")}${nf(data.summary.total)}${cpText(" 条评论（含回复）· 浏览 ", " comments and replies · Views: ")}${data.video.view_count == null ? cpText("未获取", "Unavailable") : nf(data.video.view_count)}${cpText(" · 视频点赞 ", " · Video likes: ")}${data.video.like_count == null ? cpText("未公开／未获取", "Unavailable") : nf(data.video.like_count)}${cpText(" · 按「热门」排序", " · Sorted by relevance")}`;
 
   const thumb = document.getElementById("thumb");
   if (data.video.thumbnail) {
@@ -274,11 +275,11 @@ function renderSummary(summary) {
   const avg = summary.avg_sentiment;
   document.getElementById("tAvg").textContent = (avg >= 0 ? "+" : "") + avg.toFixed(2);
   document.getElementById("tPos").textContent = summary.positive_pct + "%";
-  document.getElementById("tPosSub").textContent = nf(summary.positive) + " 条";
+  document.getElementById("tPosSub").textContent = nf(summary.positive) + cpText(" 条", " comments");
   document.getElementById("tNeu").textContent = summary.neutral_pct + "%";
-  document.getElementById("tNeuSub").textContent = nf(summary.neutral) + " 条";
+  document.getElementById("tNeuSub").textContent = nf(summary.neutral) + cpText(" 条", " comments");
   document.getElementById("tNeg").textContent = summary.negative_pct + "%";
-  document.getElementById("tNegSub").textContent = nf(summary.negative) + " 条";
+  document.getElementById("tNegSub").textContent = nf(summary.negative) + cpText(" 条", " comments");
 
   const segPos = document.getElementById("segPos");
   const segNeu = document.getElementById("segNeu");
@@ -385,7 +386,7 @@ function renderWordFreq() {
       ? words
           .map(([w, n]) => `<button type="button" class="word-chip" data-word="${esc(w)}">${esc(w)}<b>${n}</b></button>`)
           .join("")
-      : `<span class="empty">（评论太少，统计不出高频词）</span>`;
+      : `<span class="empty">${cpText("（评论太少，统计不出高频词）", "Too few comments to show common words.")}</span>`;
   }
 }
 
@@ -411,7 +412,7 @@ function renderReps() {
   const card = (c, extra) => `<li class="rep${extra ? " rep-extra" : ""}"${extra ? " hidden" : ""}>
       <p class="rep-text">&ldquo;${esc(displayText(c))}&rdquo;</p>
       <p class="rep-foot">
-        <span class="who">${esc(displayAuthor(c.author))}</span><span>👍 ${nf(c.like_count)}</span><span class="mono">把握度 ${c.confidence.toFixed(2)}</span>
+        <span class="who">${esc(displayAuthor(c.author))}</span><span>👍 ${nf(c.like_count)}</span><span class="mono">${cpText("把握度 ", "Confidence: ")}${c.confidence.toFixed(2)}</span>
         <button type="button" class="mini-link translate-btn" data-id="${esc(c.id)}">${translateLabel(c)}</button>
       </p>
     </li>`;
@@ -420,15 +421,15 @@ function renderReps() {
     const list = top(sent);
     const el = document.getElementById(elId);
     if (!list.length) {
-      const label = sent === "positive" ? "正面" : "负面";
-      el.innerHTML = `<li class="rep-empty">${q ? `没有匹配「${esc(q)}」的${label}代表性评论` : `暂无${label}评论`}</li>`;
+      const label = sent === "positive" ? cpText("正面", "positive") : cpText("负面", "negative");
+      el.innerHTML = `<li class="rep-empty">${q ? `${cpText("没有匹配「", "No comments match “")}${esc(q)}${cpText("」的", "” in the ")}${label}${cpText("代表性评论", " category.")}` : `${cpText("暂无", "No ")}${label}${cpText("评论", " comments yet")}`}</li>`;
       return;
     }
     const visible = list.slice(0, REP_VISIBLE).map((c) => card(c, false));
     const rest = list.slice(REP_VISIBLE);
     const extraCards = rest.map((c) => card(c, true));
     const toggle = rest.length
-      ? `<li class="rep-toggle-row"><button type="button" class="mini-link rep-toggle">展开更多（+${rest.length}）</button></li>`
+      ? `<li class="rep-toggle-row"><button type="button" class="mini-link rep-toggle">${cpText("展开更多（+", "Show more (+")}${rest.length}${cpText("）", ")")}</button></li>`
       : "";
     el.innerHTML = visible.join("") + extraCards.join("") + toggle;
   };
@@ -438,7 +439,7 @@ function renderReps() {
 
   const filterNote = document.getElementById("repsFilterNote");
   filterNote.hidden = !q;
-  if (q) filterNote.textContent = `按「${q}」筛选`;
+  if (q) filterNote.textContent = `${cpText("按「", "Filter: “")}${q}${cpText("」筛选", "”")}`;
 }
 
 function updateSearchStats() {
@@ -453,17 +454,17 @@ function updateSearchStats() {
   const matches = state.comments.filter((c) => c.text.toLowerCase().includes(needle));
   searchStats.hidden = false;
   if (matches.length === 0) {
-    searchStats.textContent = `没有找到包含「${q}」的评论`;
+    searchStats.textContent = `${cpText("没有找到包含「", "No comments contain “")}${q}${cpText("」的评论", "”")}`;
     return;
   }
   const counts = { positive: 0, neutral: 0, negative: 0 };
   matches.forEach((c) => counts[c.sentiment]++);
   const pct = (n) => Math.round((n / matches.length) * 100);
   searchStats.innerHTML =
-    `包含「<b>${esc(q)}</b>」的评论共 <b>${nf(matches.length)}</b> 条 —— ` +
-    `<span class="dot pos" style="display:inline-block"></span>正面 <b>${counts.positive}</b>(${pct(counts.positive)}%) · ` +
-    `<span class="dot neu" style="display:inline-block"></span>中性 <b>${counts.neutral}</b>(${pct(counts.neutral)}%) · ` +
-    `<span class="dot neg" style="display:inline-block"></span>负面 <b>${counts.negative}</b>(${pct(counts.negative)}%)`;
+    `${cpText("包含「", "Keyword “")}<b>${esc(q)}</b>${cpText("」的评论共 ", "” appears in ")}<b>${nf(matches.length)}</b>${cpText(" 条 —— ", " comments · ")}` +
+    `<span class="dot pos" style="display:inline-block"></span>${cpText("正面 ", "Positive ")}<b>${counts.positive}</b>(${pct(counts.positive)}%) · ` +
+    `<span class="dot neu" style="display:inline-block"></span>${cpText("中性 ", "Neutral ")}<b>${counts.neutral}</b>(${pct(counts.neutral)}%) · ` +
+    `<span class="dot neg" style="display:inline-block"></span>${cpText("负面 ", "Negative ")}<b>${counts.negative}</b>(${pct(counts.negative)}%)`;
 }
 
 const LOW_CONF_THRESHOLD = 0.6;
@@ -500,15 +501,15 @@ function renderTable() {
       return `<tr data-cid="${esc(r.id)}">
         <td class="author">${esc(displayAuthor(r.author))}</td>
         <td class="text">
-          <div class="body">${r.is_reply ? '<span class="reply-tag">回复</span>' : ""}${esc(displayText(r))}</div>
+          <div class="body">${r.is_reply ? cpText("<span class=\"reply-tag\">回复</span>", "<span class=\"reply-tag\">Reply</span>") : ""}${esc(displayText(r))}</div>
           <div class="text-tools">
-            <button type="button" class="mini-link expand-btn" hidden>展开</button>
+            <button type="button" class="mini-link expand-btn" hidden>${cpText("展开", "Expand")}</button>
             <button type="button" class="mini-link translate-btn" data-id="${esc(r.id)}">${translateLabel(r)}</button>
           </div>
         </td>
         <td class="num mono">${nf(r.like_count)}</td>
         <td><span class="pill ${s.cls}"><span class="dot ${s.cls}"></span>${s.label}</span>${
-        r.reviewed_by ? `<span class="reviewed-badge" title="${esc(r.reason || "")}">AI 复核</span>` : ""
+        r.reviewed_by ? `<span class="reviewed-badge" title="${esc(r.reason || "")}${cpText("\">AI 复核", "\">AI reviewed")}</span>` : ""
       }</td>
         <td class="num mono">${r.confidence.toFixed(2)}</td>
       </tr>`;
@@ -558,7 +559,7 @@ document.getElementById("tbody").addEventListener("click", (e) => {
   const btn = cell.querySelector(".expand-btn");
   const expanded = body.classList.toggle("expanded");
   btn.hidden = false;
-  btn.textContent = expanded ? "收起" : "展开";
+  btn.textContent = expanded ? cpText("收起", "Collapse") : cpText("展开", "Expand");
 });
 
 document.getElementById("lowConfToggle").addEventListener("change", (e) => {
@@ -622,7 +623,7 @@ function currentTheme() {
 }
 function updateThemeBtnLabel() {
   document.getElementById("themeToggle").textContent =
-    currentTheme() === "dark" ? "☀️ 白天模式" : "🌙 夜晚模式";
+    currentTheme() === "dark" ? cpText("☀️ 白天模式", "☀️ Light mode") : cpText("🌙 夜晚模式", "🌙 Dark mode");
 }
 updateThemeBtnLabel();
 
@@ -636,7 +637,7 @@ document.getElementById("themeToggle").addEventListener("click", () => {
 // ---- 导出 CSV：纯前端生成，不额外调用任何 API，免费瞬间完成 ----
 document.getElementById("exportBtn").addEventListener("click", () => {
   if (!state.comments.length) return;
-  const headers = ["作者", "评论原文", "中文翻译", "点赞数", "发布时间", "是否回复", "情感", "把握度", "AI复核", "复核理由"];
+  const headers = [cpText("作者", "Author"), cpText("评论原文", "Original comment"), cpText("中文翻译", "English translation"), cpText("点赞数", "Likes"), cpText("发布时间", "Published at"), cpText("是否回复", "Reply"), cpText("情感", "Sentiment"), cpText("把握度", "Confidence"), cpText("AI复核", "AI reviewed"), cpText("复核理由", "Review reason")];
   const csvEscape = (v) => {
     const s = String(v ?? "");
     return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
@@ -644,13 +645,13 @@ document.getElementById("exportBtn").addEventListener("click", () => {
   const rows = state.comments.map((c) => [
     displayAuthor(c.author),
     c.text,
-    c.text_zh || "",
+    c[translationField] || "",
     c.like_count,
     c.published_at,
-    c.is_reply ? "是" : "否",
+    c.is_reply ? cpText("是", "Yes") : cpText("否", "No"),
     SENT[c.sentiment] ? SENT[c.sentiment].label : c.sentiment,
     c.confidence.toFixed(2),
-    c.reviewed_by ? "是" : "否",
+    c.reviewed_by ? cpText("是", "Yes") : cpText("否", "No"),
     c.reason || "",
   ]);
   const csv = "﻿" + [headers, ...rows].map((row) => row.map(csvEscape).join(",")).join("\r\n");
@@ -668,13 +669,13 @@ document.getElementById("exportBtn").addEventListener("click", () => {
 
 // ---- 翻译（DeepSeek，逐条按需）----
 // 不再是"一键全部翻译"：每条评论旁边有个小"翻译"链接，点了才翻译这一条，翻完缓存在
-// 评论对象自己身上（c.text_zh / c.showZh），再点就是本地切换、不重复调用 API。
+// 评论对象自己身上（c[translationField] / c.showTranslation），再点就是本地切换、不重复调用 API。
 async function translateOneComment(id) {
   const c = state.comments.find((x) => x.id === id);
   if (!c || c.translating) return;
 
-  if (c.text_zh) {
-    c.showZh = !c.showZh;
+  if (c[translationField]) {
+    c.showTranslation = !c.showTranslation;
     renderReps();
     renderTable();
     return;
@@ -688,16 +689,16 @@ async function translateOneComment(id) {
   try {
     const res = await fetch("/api/translate", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: cpApiHeaders,
       body: JSON.stringify({ comments: [{ id: c.id, text: c.text, like_count: c.like_count, confidence: c.confidence }] }),
     });
     const data = await readApiResponse(res);
-    if (!res.ok) throw new Error(data.detail || "翻译失败");
+    if (!res.ok) throw new Error(data.detail || cpText("翻译失败", "Translation failed."));
     const t = data.translations.find((x) => x.id === id);
-    if (!t) throw new Error("DeepSeek 没有返回这条的翻译");
-    c.text_zh = t.text_zh;
+    if (!t) throw new Error(cpText("DeepSeek 没有返回这条的翻译", "DeepSeek returned no translation for this comment."));
+    c[translationField] = t[translationField];
     queueMicrotask(publishEmbeddedUpdate);
-    c.showZh = true;
+    c.showTranslation = true;
   } catch (err) {
     c.translateError = true;
   } finally {
@@ -715,10 +716,10 @@ async function translateOneComment(id) {
 }
 
 function translateLabel(c) {
-  if (c.translating) return "翻译中…";
-  if (c.translateError) return "翻译失败";
-  if (c.text_zh) return c.showZh ? "原文" : "翻译";
-  return "翻译";
+  if (c.translating) return cpText("翻译中…", "Translating…");
+  if (c.translateError) return cpText("翻译失败", "Translation failed");
+  if (c[translationField]) return c.showTranslation ? cpText("原文", "Show original") : cpText("翻译", "Translate to English");
+  return cpText("翻译", "Translate to English");
 }
 
 // 全部评论表和代表性评论卡片共用同一套"翻译"链接行为，在结果区顶层代理一次就够；
@@ -735,7 +736,7 @@ resultsEl.addEventListener("click", (e) => {
     const extras = list.querySelectorAll(".rep-extra");
     const nowHidden = extras.length && !extras[0].hidden; // 当前是展开状态就收起，反之展开
     extras.forEach((li) => (li.hidden = nowHidden));
-    toggle.textContent = nowHidden ? `展开更多（+${extras.length}）` : "收起";
+    toggle.textContent = nowHidden ? `${cpText("展开更多（+", "Show more (+")}${extras.length}${cpText("）", ")")}` : cpText("收起", "Collapse");
   }
 });
 
@@ -748,10 +749,10 @@ deepBtn.addEventListener("click", async () => {
 
   const full = fullRecheckToggle.checked;
   const steps = [
-    "正在把评论发给 DeepSeek…",
-    full ? "正在重新判断全部评论…" : "正在重新判断低把握度评论…",
-    "正在总结讨论主题…",
-    "整理结果…",
+    cpText("正在把评论发给 DeepSeek…", "Sending comments to DeepSeek…"),
+    full ? cpText("正在重新判断全部评论…", "Reviewing all comments…") : cpText("正在重新判断低把握度评论…", "Reviewing low-confidence comments…"),
+    cpText("正在总结讨论主题…", "Summarizing discussion topics…"),
+    cpText("整理结果…", "Preparing results…"),
   ];
 
   let stepTimer = null;
@@ -778,11 +779,11 @@ deepBtn.addEventListener("click", async () => {
     };
     const res = await fetch("/api/deep-analyze", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: cpApiHeaders,
       body: JSON.stringify(payload),
     });
     const data = await readApiResponse(res);
-    if (!res.ok) throw new Error(data.detail || "深度分析失败，请稍后再试");
+    if (!res.ok) throw new Error(data.detail || cpText("深度分析失败，请稍后再试", "Deep analysis failed. Please try again."));
 
     // 把复核结果合并回 state.comments（按 id 匹配），然后用同一套渲染逻辑重新刷新所有统计。
     const byId = new Map(data.reclassified.map((r) => [r.id, r]));
@@ -810,16 +811,16 @@ deepBtn.addEventListener("click", async () => {
       .map(
         (n) =>
           `<div class="need-card"><div class="t-title">${esc(n.title)}<span class="support-badge">${
-            n.support === "multiple" ? "多人提到" : "个别提到"
+            n.support === "multiple" ? cpText("多人提到", "Mentioned by multiple viewers") : cpText("个别提到", "Mentioned by one viewer")
           }</span></div><div class="t-desc">${esc(n.description)}</div></div>`
       )
       .join("");
     document.getElementById("needsEmpty").hidden = needs.length > 0;
 
-    const scope = full ? "全部" : "低把握度";
+    const scope = full ? cpText("全部", "all") : cpText("低把握度", "low-confidence");
     document.getElementById("reclassifiedNote").textContent = data.reclassified.length
-      ? `已用 DeepSeek 重新判断了 ${data.reclassified.length} 条${scope}评论。`
-      : `这次没有需要复核的${scope}评论。`;
+      ? `${cpText("已用 DeepSeek 重新判断了 ", "DeepSeek reviewed ")}${data.reclassified.length}${cpText(" 条", " comments (scope: ")}${scope}${cpText("评论。", ").")}`
+      : `${cpText("这次没有需要复核的", "There were no comments to review (scope: ")}${scope}${cpText("评论。", ").")}`;
     deepResults.hidden = false;
     publishEmbeddedUpdate();
   } catch (err) {
@@ -847,7 +848,8 @@ function publishEmbeddedUpdate() {
 }
 if (new URLSearchParams(location.search).get('embedded') === '1' && window.parent !== window) {
   document.querySelector('.query').hidden=true;
-  document.querySelector('.topbar-right a[href="/static/batch.html"]').hidden=true;
+  document.querySelector("[data-locale-link]").hidden = true;
+  document.getElementById("languageToggle").hidden = true;
   document.getElementById('historyBar').style.display='none';
   window.addEventListener('message',e=>{
     if(e.origin!==location.origin || e.source!==window.parent || e.data?.type!=='commentpulse-load')return;
@@ -862,7 +864,7 @@ if (new URLSearchParams(location.search).get('embedded') === '1' && window.paren
       const needs=embeddedTopics.needs||[];
       document.getElementById('needsList').innerHTML=needs.map(n=>`<div class="need-card"><div class="t-title">${esc(n.title)}</div><div class="t-desc">${esc(n.description)}</div></div>`).join('');
       document.getElementById('needsEmpty').hidden=needs.length>0;
-      document.getElementById('reclassifiedNote').textContent='已载入批量分析生成的主题总结。';
+      document.getElementById('reclassifiedNote').textContent=cpText("已载入批量分析生成的主题总结。", "Loaded the topics generated during batch analysis.");
       deepResults.hidden=false;
     }
   });

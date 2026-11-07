@@ -78,7 +78,7 @@ h1,h2{font-family:"Archivo","IBM Plex Sans",system-ui,sans-serif; text-wrap:bala
 }
 .theme-btn:hover{color:var(--ink)}
 
-.topbar-right{display:flex; align-items:center; gap:10px}
+.topbar-right{display:flex; flex-wrap:wrap; justify-content:flex-end; align-items:center; gap:10px}
 .quota-pill{
   display:flex; align-items:center; gap:8px; font-size:.74rem; color:var(--muted);
   background:var(--surface); border:1px solid var(--border); border-radius:999px; padding:6px 12px;

@@ -6,7 +6,14 @@ const element = id => {
   if(!elements.has(id)) elements.set(id,{value:'',textContent:'',innerHTML:'',hidden:true,disabled:false,addEventListener(){}});
   return elements.get(id);
 };
-const context=vm.createContext({window:{addEventListener(){}},location:{origin:"http://localhost"},document:{getElementById:element,querySelectorAll:()=>[]},console,URL,Blob,setTimeout,confirm:()=>true,fetch:async()=>{throw new Error('network failure');}});
+const language = process.argv.includes('--english') ? 'en' : 'zh-CN';
+const context=vm.createContext({
+  window:{addEventListener(){}}, location:{origin:"http://localhost",search:`?lang=${language}`},
+  document:{getElementById:element,querySelectorAll:()=>[],documentElement:{},createTreeWalker:()=>({nextNode:()=>null})},
+  console,URL,URLSearchParams,NodeFilter:{SHOW_TEXT:4},Blob,setTimeout,confirm:()=>true,
+  fetch:async()=>{throw new Error('network failure');}
+});
+vm.runInContext(fs.readFileSync('frontend/locale.js','utf8'),context);
 vm.runInContext(fs.readFileSync('frontend/batch.js','utf8'),context);
 const run=code=>vm.runInContext(code,context);
 (async()=>{
@@ -16,7 +23,12 @@ const run=code=>vm.runInContext(code,context);
   run(`jobs=[{id:'abcdefghijk',title:'A',status:'pending'},{id:'12345678901',title:'B',status:'pending'}];`);
   let calls=0;
   const data={video:{title:'<script>bad()</script>',channel:'Test'},summary:{total:2,positive:1,neutral:0,negative:1,positive_pct:50,neutral_pct:0,negative_pct:50},comments:[{id:'c1',author:'SECRET_AUTHOR',text:'<img src=x onerror=bad()>',sentiment:'positive',like_count:2}]};
-  context.fetch=async()=>{calls++; if(calls===1)throw new Error('timeout');return{ok:true,json:async()=>data};};
+  context.fetch=async(_path,options)=>{
+    assert.equal(options.headers['Accept-Language'],language);
+    calls++;
+    if(calls===1)throw new Error('timeout');
+    return{ok:true,json:async()=>data};
+  };
   await run('runJobs()');
   assert.equal(run('jobs[0].status'),'error');
   assert.equal(run('jobs[1].status'),'done');
@@ -31,7 +43,9 @@ const run=code=>vm.runInContext(code,context);
   assert.ok(html.includes('&lt;script&gt;'));
   assert.ok(!html.includes('<script>'));
   assert.ok(!html.includes('<img src=x'));
-  assert.ok(html.includes('4 条评论'));
+  assert.ok(html.includes(`<html lang="${language}">`));
+  assert.ok(html.includes(language === 'en' ? '4 comments and replies' : '4 条评论'));
+  if (language === 'en') assert.doesNotMatch(html,/\p{Script=Han}/u);
   run(`jobs[0].data.video.channel_id='creator'; jobs[0].data.comments = [
     {id:'reply',text:'Creator reply',sentiment:'positive',confidence:0.99,like_count:100,is_reply:true},
     {id:'owner',text:'Creator post',sentiment:'positive',confidence:0.99,like_count:99,author_channel_id:'creator'},
@@ -45,12 +59,13 @@ const run=code=>vm.runInContext(code,context);
   assert.ok(!evidence.includes('Creator reply'));
   assert.ok(!evidence.includes('Creator post'));
   assert.ok(!evidence.includes('Uncertain'));
-  assert.ok(evidence.includes('展开其余 5 条'));
+  assert.ok(evidence.includes(language === 'en' ? 'Show the remaining 5 comments' : '展开其余 5 条'));
   element('detailDialog').showModal=()=>{element('detailDialog').open=true;};
   element('detailDialog').close=()=>{element('detailDialog').open=false;};
   element('batchRows').onclick({target:{closest:()=>({dataset:{detail:'0'}})}});
   assert.equal(element('detailDialog').open,true);
   assert.ok(element('modalDetail').innerHTML.includes('detailFrame'));
+  assert.ok(element('modalDetail').innerHTML.includes(`lang=${language}`));
   element('closeDetail').onclick();assert.equal(element('detailDialog').open,false);
   console.log('Frontend checks passed: URL validation, partial failure, retry, batch provenance, report totals, escaping and author privacy.');
 })().catch(e=>{console.error(e);process.exitCode=1;});

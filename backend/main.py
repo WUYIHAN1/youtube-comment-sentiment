@@ -9,10 +9,12 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import budget, quota
+from .locale import english_error, request_locale
 from .schema import ChannelVideosRequest, AdScreenRequest
 from .youtube import list_recent_videos
 from .llm import screen_ad_videos
@@ -41,6 +43,13 @@ FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
 app = FastAPI(title="CommentPulse API")
 _model_lock = Lock()
+
+
+@app.exception_handler(HTTPException)
+async def localized_http_exception(request: Request, exc: HTTPException):
+    if request_locale(request) == "en" and isinstance(exc.detail, str):
+        exc = HTTPException(exc.status_code, english_error(exc.detail), headers=exc.headers)
+    return await http_exception_handler(request, exc)
 
 
 @app.middleware("http")
@@ -121,16 +130,17 @@ def deep_analyze(req: DeepAnalyzeRequest, request: Request):
     all_comments = [c.model_dump() for c in req.comments]
     to_review = all_comments if req.full_recheck else [c for c in all_comments if c["confidence"] < LOW_CONF_THRESHOLD]
 
+    language = request_locale(request)
     try:
-        reclassified = reclassify_comments(to_review, req.video_title) if to_review else []
-        topics = summarize_topics(all_comments, req.video_title)
+        reclassified = reclassify_comments(to_review, req.video_title, language) if to_review else []
+        topics = summarize_topics(all_comments, req.video_title, language)
     except LLMError as e:
         raise HTTPException(400, e.message)
 
     return {"reclassified": reclassified, "topics": topics}
 
 
-@app.post("/api/translate", response_model=TranslateResponse)
+@app.post("/api/translate", response_model=TranslateResponse, response_model_exclude_none=True)
 def translate(req: TranslateRequest, request: Request):
     if not DEEPSEEK_KEY_SET:
         raise HTTPException(500, "服务器未配置 DEEPSEEK_API_KEY，请检查 .env 文件")
@@ -144,7 +154,7 @@ def translate(req: TranslateRequest, request: Request):
         raise HTTPException(429, "今天的翻译额度已经用完了，明天再来")
 
     try:
-        translations = translate_comments([c.model_dump() for c in req.comments])
+        translations = translate_comments([c.model_dump() for c in req.comments], request_locale(request))
     except LLMError as e:
         raise HTTPException(400, e.message)
     return {"translations": translations}
@@ -180,7 +190,7 @@ def screen_ads(req: AdScreenRequest, request: Request):
     if not budget.check_daily_cap("screen_ads", 40):
         raise HTTPException(429, "今日广告初筛额度已用完")
     try:
-        return {"videos": screen_ad_videos([v.model_dump() for v in req.videos])}
+        return {"videos": screen_ad_videos([v.model_dump() for v in req.videos], request_locale(request))}
     except LLMError as e:
         raise HTTPException(400, e.message)
 
@@ -205,7 +215,7 @@ def batch_topics(req: DeepAnalyzeRequest, request: Request):
         raise HTTPException(429, "今日批量主题总结额度已用完")
     try:
         from .schema import TopicSummary
-        topics = summarize_topics([c.model_dump() for c in req.comments], req.video_title)
+        topics = summarize_topics([c.model_dump() for c in req.comments], req.video_title, request_locale(request))
         return {"topics": TopicSummary.model_validate(topics).model_dump()}
     except LLMError as e:
         raise HTTPException(400, e.message)

@@ -105,7 +105,8 @@ class TranslateRequest(BaseModel):
 
 class Translation(BaseModel):
     id: str
-    text_zh: str
+    text_zh: str | None = None
+    text_en: str | None = None
 
 
 class TranslateResponse(BaseModel):

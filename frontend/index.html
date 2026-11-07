@@ -18,11 +18,12 @@
     CommentPulse
   </div>
   <div class="topbar-right">
-    <a href="/static/batch.html" class="theme-btn">批量分析 / 导出报告</a>
+    <a data-locale-link href="/static/batch.html" class="theme-btn">批量分析</a>
     <div class="quota-pill" id="quotaPill" title="YouTube API 每日配额用量（本地估算，非 Google 官方数字）" hidden>
       <span id="quotaText">查询余额 —</span>
       <span class="quota-bar"><span class="quota-bar-fill" id="quotaBarFill"></span></span>
     </div>
+    <button class="theme-btn" id="languageToggle" type="button"></button>
     <button class="theme-btn" id="themeToggle" type="button"></button>
   </div>
 </header>
@@ -232,6 +233,7 @@
   </div>
 </div>
 
+<script src="/static/locale.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>
