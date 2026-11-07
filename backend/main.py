@@ -4,6 +4,7 @@
 """
 
 import os
+from threading import Lock
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -12,6 +13,9 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import budget, quota
+from .schema import ChannelVideosRequest, AdScreenRequest
+from .youtube import list_recent_videos
+from .llm import screen_ad_videos
 from .llm import LLMError, reclassify_comments, summarize_topics, translate_comments
 from .schema import (
     AnalyzeRequest,
@@ -36,6 +40,7 @@ LOW_CONF_THRESHOLD = 0.6
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
 app = FastAPI(title="CommentPulse API")
+_model_lock = Lock()
 
 
 @app.middleware("http")
@@ -55,6 +60,16 @@ def index():
     return FileResponse(FRONTEND_DIR / "index.html")
 
 
+@app.get("/portfolio", include_in_schema=False)
+def portfolio():
+    return FileResponse(FRONTEND_DIR / "portfolio.html", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/portfolio/preview.png", include_in_schema=False)
+def portfolio_preview():
+    return FileResponse(FRONTEND_DIR.parent / "assets" / "overview.png")
+
+
 app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
 
 
@@ -67,6 +82,10 @@ def analyze(req: AnalyzeRequest, request: Request):
     if not budget.check_ip_limit("analyze", ip, budget.ANALYZE_IP_LIMIT, budget.ANALYZE_IP_WINDOW):
         raise HTTPException(429, "请求太频繁，歇一会儿再试")
 
+    return analyze_video(req)
+
+
+def analyze_video(req: AnalyzeRequest):
     video_id = extract_video_id(req.url)
     if not video_id:
         raise HTTPException(400, "无法识别这个链接，请确认是完整的 YouTube 视频链接")
@@ -81,7 +100,8 @@ def analyze(req: AnalyzeRequest, request: Request):
     if not raw_comments:
         raise HTTPException(400, "没有抓到任何评论（评论区可能是空的）")
 
-    scored = score_comments(raw_comments)
+    with _model_lock:
+        scored = score_comments(raw_comments)
     summary = compute_summary(scored)
 
     return {"video": video, "summary": summary, "comments": scored}
@@ -139,3 +159,55 @@ def quota_status():
 @app.get("/api/health")
 def health():
     return {"ok": True, "has_api_key": bool(API_KEY), "has_deepseek_key": DEEPSEEK_KEY_SET}
+
+
+@app.post("/api/channel-videos")
+def channel_videos(req: ChannelVideosRequest, request: Request):
+    if not API_KEY:
+        raise HTTPException(500, "服务器未配置 YOUTUBE_API_KEY")
+    if not budget.check_ip_limit("channel", budget.client_ip(request), 15, 600):
+        raise HTTPException(429, "频道查询过于频繁，请稍后重试")
+    try:
+        return list_recent_videos(API_KEY, req.channel, req.limit)
+    except YouTubeError as e:
+        raise HTTPException(400, e.message)
+
+
+@app.post("/api/screen-ads")
+def screen_ads(req: AdScreenRequest, request: Request):
+    if not budget.check_ip_limit("screen_ads", budget.client_ip(request), 5, 3600):
+        raise HTTPException(429, "广告初筛过于频繁，请稍后重试")
+    if not budget.check_daily_cap("screen_ads", 40):
+        raise HTTPException(429, "今日广告初筛额度已用完")
+    try:
+        return {"videos": screen_ad_videos([v.model_dump() for v in req.videos])}
+    except LLMError as e:
+        raise HTTPException(400, e.message)
+
+
+@app.post("/api/batch-item", response_model=AnalyzeResponse)
+def batch_item(req: AnalyzeRequest, request: Request):
+    if not API_KEY:
+        raise HTTPException(500, "服务器未配置 YOUTUBE_API_KEY")
+    if not budget.check_ip_limit("batch_item", budget.client_ip(request), 30, 3600):
+        raise HTTPException(429, "批量分析每小时最多 30 条视频，请稍后继续")
+    return analyze_video(req)
+
+
+@app.post("/api/batch-topics")
+def batch_topics(req: DeepAnalyzeRequest, request: Request):
+    """Topic-only workflow: never reclassify comments or use its separate quota."""
+    if len(req.comments) > 5000:
+        raise HTTPException(400, "单视频主题总结最多接收 5000 条评论")
+    if not budget.check_ip_limit("batch_topics", budget.client_ip(request), 15, 3600):
+        raise HTTPException(429, "批量主题总结每小时最多 15 次，请稍后继续")
+    if not budget.check_daily_cap("batch_topics", budget.DEEP_DAILY_CAP):
+        raise HTTPException(429, "今日批量主题总结额度已用完")
+    try:
+        from .schema import TopicSummary
+        topics = summarize_topics([c.model_dump() for c in req.comments], req.video_title)
+        return {"topics": TopicSummary.model_validate(topics).model_dump()}
+    except LLMError as e:
+        raise HTTPException(400, e.message)
+    except ValueError:
+        raise HTTPException(502, "AI 主题总结格式不完整，请重试")

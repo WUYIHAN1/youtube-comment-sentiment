@@ -5,6 +5,7 @@
 
 import json
 import re
+import httplib2
 from typing import Optional
 
 from googleapiclient.discovery import build
@@ -42,7 +43,8 @@ def extract_video_id(url: str) -> Optional[str]:
 
 
 def build_client(api_key: str):
-    return build("youtube", "v3", developerKey=api_key, cache_discovery=False)
+    return build("youtube", "v3", developerKey=api_key, cache_discovery=False,
+                 http=httplib2.Http(timeout=20))
 
 
 def _reason_of(e: HttpError) -> str:
@@ -74,10 +76,12 @@ def _translate_http_error(e: HttpError) -> YouTubeError:
 
 def fetch_video_info(youtube, video_id: str) -> dict:
     try:
-        resp = youtube.videos().list(part="snippet", id=video_id).execute()
+        resp = youtube.videos().list(part="snippet,statistics", id=video_id).execute(num_retries=2)
         quota.add_usage(1)
     except HttpError as e:
         raise _translate_http_error(e)
+    except (OSError, httplib2.HttpLib2Error) as e:
+        raise YouTubeError("network_error", "连接 YouTube API 失败或超时，请检查网络和代理设置后重试") from e
     items = resp.get("items", [])
     if not items:
         raise YouTubeError("video_not_found", "视频不存在、已被删除或设为私有")
@@ -89,6 +93,10 @@ def fetch_video_info(youtube, video_id: str) -> dict:
         "title": sn.get("title", "（无标题）"),
         "channel": sn.get("channelTitle", "（未知频道）"),
         "thumbnail": thumb,
+        "published_at": sn.get("publishedAt", ""),
+        "channel_id": sn.get("channelId", ""),
+        "view_count": int(items[0]["statistics"]["viewCount"]) if "viewCount" in items[0].get("statistics", {}) else None,
+        "like_count": int(items[0]["statistics"]["likeCount"]) if "likeCount" in items[0].get("statistics", {}) else None,
     }
 
 
@@ -96,6 +104,7 @@ def _comment_from_snippet(cid: str, sn: dict, is_reply: bool, parent_id: Optiona
     return {
         "id": cid,
         "author": sn.get("authorDisplayName", "匿名用户"),
+        "author_channel_id": sn.get("authorChannelId", {}).get("value", ""),
         "text": sn.get("textOriginal", ""),
         "like_count": sn.get("likeCount", 0),
         "published_at": sn.get("publishedAt", ""),
@@ -128,7 +137,7 @@ def _fetch_remaining_replies(youtube, parent_id: str, already_have: set) -> list
                 textFormat="plainText",
                 pageToken=page_token,
             )
-            .execute()
+            .execute(num_retries=2)
         )
         quota.add_usage(1)
         for r in resp.get("items", []):
@@ -174,7 +183,7 @@ def fetch_comments(api_key: str, video_id: str, max_top_level: int = 1000) -> li
                     textFormat="plainText",
                     pageToken=page_token,
                 )
-                .execute()
+                .execute(num_retries=2)
             )
             quota.add_usage(1)
             items = resp.get("items", [])
@@ -202,5 +211,62 @@ def fetch_comments(api_key: str, video_id: str, max_top_level: int = 1000) -> li
                 break
     except HttpError as e:
         raise _translate_http_error(e)
+    except (OSError, httplib2.HttpLib2Error) as e:
+        raise YouTubeError("network_error", "获取 YouTube 评论失败或超时，请检查网络和代理设置后重试") from e
 
     return comments
+
+
+def list_recent_videos(api_key: str, channel_input: str, limit: int = 30) -> dict:
+    """Resolve a handle/channel ID and inspect at most 50 recent uploads."""
+    from urllib.parse import urlparse, unquote
+    value = channel_input.strip()
+    if value.startswith("@"):
+        query = {"forHandle": value}
+    elif re.fullmatch(r"UC[\w-]{22}", value):
+        query = {"id": value}
+    else:
+        parsed = urlparse(value if "://" in value else "https://" + value)
+        if parsed.hostname not in ("youtube.com", "www.youtube.com", "m.youtube.com"):
+            raise YouTubeError("invalid_channel", "请输入 YouTube 频道链接、@账号或频道 ID")
+        parts = unquote(parsed.path).strip("/").split("/")
+        if parts[0].startswith("@"):
+            query = {"forHandle": parts[0]}
+        elif len(parts) > 1 and parts[0] in ("channel", "user"):
+            query = {"id" if parts[0] == "channel" else "forUsername": parts[1]}
+        else:
+            raise YouTubeError("invalid_channel", "该链接格式暂不支持，请使用频道的 @账号链接")
+    try:
+        youtube = build_client(api_key)
+        response = youtube.channels().list(part="snippet,contentDetails", **query).execute(num_retries=2)
+        quota.add_usage(1)
+        if not response.get("items"):
+            raise YouTubeError("channel_not_found", "找不到该频道，请检查 @账号或频道链接")
+        channel = response["items"][0]
+        playlist = channel["contentDetails"]["relatedPlaylists"]["uploads"]
+        response = youtube.playlistItems().list(part="snippet,contentDetails", playlistId=playlist,
+                                               maxResults=limit).execute(num_retries=2)
+        quota.add_usage(1)
+        videos = []
+        for item in response.get("items", []):
+            sn = item["snippet"]
+            if sn.get("title") in ("Private video", "Deleted video"):
+                continue
+            videos.append({"id": item["contentDetails"]["videoId"], "title": sn["title"],
+                           "description": sn.get("description", "")[:3000],
+                           "channel": channel["snippet"]["title"],
+                           "published_at": item["contentDetails"].get("videoPublishedAt", sn.get("publishedAt", ""))})
+        if videos:
+            stats_response = youtube.videos().list(part="statistics", id=",".join(v["id"] for v in videos)).execute(num_retries=2)
+            quota.add_usage(1)
+            stats = {item["id"]: item.get("statistics", {}) for item in stats_response.get("items", [])}
+            for video in videos:
+                st = stats.get(video["id"], {})
+                video["view_count"] = int(st["viewCount"]) if "viewCount" in st else None
+                video["like_count"] = int(st["likeCount"]) if "likeCount" in st else None
+        videos.sort(key=lambda v: v["published_at"], reverse=True)
+        return {"channel": channel["snippet"]["title"], "videos": videos}
+    except HttpError as e:
+        raise _translate_http_error(e)
+    except (OSError, httplib2.HttpLib2Error) as e:
+        raise YouTubeError("network_error", "读取频道失败，请检查网络和代理后重试") from e

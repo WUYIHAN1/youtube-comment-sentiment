@@ -143,6 +143,17 @@ function stopProgress() {
   }, 250);
 }
 
+async function readApiResponse(res) {
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error(`服务器响应异常（HTTP ${res.status}），请稍后重试`);
+  }
+  if (!res.ok) throw new Error(data.detail || `请求失败（HTTP ${res.status}）`);
+  return data;
+}
+
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
   const url = urlInput.value.trim();
@@ -158,7 +169,7 @@ form.addEventListener("submit", async (e) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url }),
     });
-    const data = await res.json();
+    const data = await readApiResponse(res);
     if (!res.ok) {
       throw new Error(data.detail || "分析失败，请稍后再试");
     }
@@ -196,6 +207,7 @@ refreshQuota();
 
 function render(data) {
   state.comments = data.comments;
+  state.videoChannelId = data.video.channel_id || "";
   state.search = "";
   state.filter = "all";
   state.lowConfOnly = false;
@@ -208,7 +220,7 @@ function render(data) {
   document.getElementById("videoChannel").textContent = data.video.channel;
   document.getElementById(
     "videoMeta"
-  ).textContent = `已分析 ${nf(data.summary.total)} 条评论（含回复）· 按「热门」排序`;
+  ).textContent = `已分析 ${nf(data.summary.total)} 条评论（含回复）· 浏览 ${data.video.view_count == null ? "未获取" : nf(data.video.view_count)} · 视频点赞 ${data.video.like_count == null ? "未公开／未获取" : nf(data.video.like_count)} · 按「热门」排序`;
 
   const thumb = document.getElementById("thumb");
   if (data.video.thumbnail) {
@@ -379,15 +391,23 @@ function renderWordFreq() {
 
 // 代表性评论每类最多显示 10 条：前 3 条常驻，第 4-10 条折叠起来，点"展开更多"才出现——
 // 列表本来就是按点赞排第一屏最值得看的三条，10 条一起铺开容易变成第二个"全部评论表"。
-const REP_VISIBLE = 3;
+const REP_VISIBLE = 5;
 const REP_TOTAL = 10;
 
+// 跟"全部评论"共用同一个 state.search：高频词点进来的词、表格里手打的关键词，
+// 都会让这里同步只看命中的代表性评论，而不是自己停在"全部"，看起来像是被跳过的孤立板块。
 function renderReps() {
-  const top = (sent) =>
-    state.comments
-      .filter((c) => c.sentiment === sent)
+  const q = state.search.trim().toLowerCase();
+  const top = (sent) => {
+    const seen = new Set();
+    return state.comments
+      .filter((c) => c.sentiment === sent && !c.is_reply && c.confidence >= 0.6)
+      .filter((c) => !state.videoChannelId || c.author_channel_id !== state.videoChannelId)
+      .filter((c) => {const text = c.text.trim().toLowerCase().replace(/\s+/g, " "); if (!text || seen.has(text)) return false; seen.add(text); return true;})
+      .filter((c) => !q || c.text.toLowerCase().includes(q))
       .sort((a, b) => b.like_count - a.like_count)
       .slice(0, REP_TOTAL);
+  };
   const card = (c, extra) => `<li class="rep${extra ? " rep-extra" : ""}"${extra ? " hidden" : ""}>
       <p class="rep-text">&ldquo;${esc(displayText(c))}&rdquo;</p>
       <p class="rep-foot">
@@ -400,7 +420,8 @@ function renderReps() {
     const list = top(sent);
     const el = document.getElementById(elId);
     if (!list.length) {
-      el.innerHTML = `<li class="rep-empty">暂无${sent === "positive" ? "正面" : "负面"}评论</li>`;
+      const label = sent === "positive" ? "正面" : "负面";
+      el.innerHTML = `<li class="rep-empty">${q ? `没有匹配「${esc(q)}」的${label}代表性评论` : `暂无${label}评论`}</li>`;
       return;
     }
     const visible = list.slice(0, REP_VISIBLE).map((c) => card(c, false));
@@ -414,6 +435,10 @@ function renderReps() {
 
   fill("repPos", "positive");
   fill("repNeg", "negative");
+
+  const filterNote = document.getElementById("repsFilterNote");
+  filterNote.hidden = !q;
+  if (q) filterNote.textContent = `按「${q}」筛选`;
 }
 
 function updateSearchStats() {
@@ -541,25 +566,34 @@ document.getElementById("lowConfToggle").addEventListener("change", (e) => {
   renderTable();
 });
 
-// 点高频词 chip = 直接拿它去搜，跳到全部评论表看命中的原文。
+// 点高频词 chip = 拿它去搜，先落到"代表性评论"（这里也会同步按这个词筛选，不再是路过
+// 跳过的孤立板块），再往下滚就是筛选后的全部评论表——三个板块串成一条一致的下钻路径。
 document.getElementById("wordFreqSection").addEventListener("click", (e) => {
   const chip = e.target.closest(".word-chip");
   if (!chip) return;
   const word = chip.dataset.word;
   searchBox.value = word;
   state.search = word;
+  renderReps();
   renderTable();
-  document.getElementById("tableSection").scrollIntoView({ behavior: "smooth", block: "start" });
-  searchBox.focus();
+  document.getElementById("repsSection").scrollIntoView({ behavior: "smooth", block: "start" });
 });
 
+// 每敲一个字母就重新筛选、列表跟着跳动，体验很闹心，防抖到停手 350ms 后再筛一次。
+let searchDebounceTimer = null;
 searchBox.addEventListener("input", () => {
   state.search = searchBox.value;
-  renderTable();
+  clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = setTimeout(() => {
+    renderReps();
+    renderTable();
+  }, 350);
 });
 searchClear.addEventListener("click", () => {
+  clearTimeout(searchDebounceTimer);
   searchBox.value = "";
   state.search = "";
+  renderReps();
   renderTable();
   searchBox.focus();
 });
@@ -657,11 +691,12 @@ async function translateOneComment(id) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ comments: [{ id: c.id, text: c.text, like_count: c.like_count, confidence: c.confidence }] }),
     });
-    const data = await res.json();
+    const data = await readApiResponse(res);
     if (!res.ok) throw new Error(data.detail || "翻译失败");
     const t = data.translations.find((x) => x.id === id);
     if (!t) throw new Error("DeepSeek 没有返回这条的翻译");
     c.text_zh = t.text_zh;
+    queueMicrotask(publishEmbeddedUpdate);
     c.showZh = true;
   } catch (err) {
     c.translateError = true;
@@ -746,7 +781,7 @@ deepBtn.addEventListener("click", async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    const data = await res.json();
+    const data = await readApiResponse(res);
     if (!res.ok) throw new Error(data.detail || "深度分析失败，请稍后再试");
 
     // 把复核结果合并回 state.comments（按 id 匹配），然后用同一套渲染逻辑重新刷新所有统计。
@@ -762,6 +797,7 @@ deepBtn.addEventListener("click", async () => {
     renderWordFreq();
     renderTable();
 
+    embeddedTopics = data.topics;
     document.getElementById("topicSummary").textContent = data.topics.summary;
     document.getElementById("themeList").innerHTML = data.topics.themes
       .map(
@@ -769,11 +805,23 @@ deepBtn.addEventListener("click", async () => {
           `<div class="theme-card ${SENT[t.tone].cls}"><div class="t-title">${esc(t.title)}</div><div class="t-desc">${esc(t.description)}</div></div>`
       )
       .join("");
+    const needs = data.topics.needs || [];
+    document.getElementById("needsList").innerHTML = needs
+      .map(
+        (n) =>
+          `<div class="need-card"><div class="t-title">${esc(n.title)}<span class="support-badge">${
+            n.support === "multiple" ? "多人提到" : "个别提到"
+          }</span></div><div class="t-desc">${esc(n.description)}</div></div>`
+      )
+      .join("");
+    document.getElementById("needsEmpty").hidden = needs.length > 0;
+
     const scope = full ? "全部" : "低把握度";
     document.getElementById("reclassifiedNote").textContent = data.reclassified.length
       ? `已用 DeepSeek 重新判断了 ${data.reclassified.length} 条${scope}评论。`
       : `这次没有需要复核的${scope}评论。`;
     deepResults.hidden = false;
+    publishEmbeddedUpdate();
   } catch (err) {
     deepErrorBox.hidden = false;
     deepErrorBox.textContent = "⚠ " + err.message;
@@ -787,3 +835,36 @@ deepBtn.addEventListener("click", async () => {
     deepBtn.disabled = false;
   }
 });
+
+
+// Batch details reuse the full single-video dashboard without fetching/scoring again.
+let embeddedTopics = null;
+let embeddedVideoId = null;
+function publishEmbeddedUpdate() {
+  if (!embeddedVideoId || window.parent === window) return;
+  window.parent.postMessage({type:'commentpulse-update',videoId:embeddedVideoId,
+    comments:state.comments,summary:computeSummaryClient(state.comments),topics:embeddedTopics},location.origin);
+}
+if (new URLSearchParams(location.search).get('embedded') === '1' && window.parent !== window) {
+  document.querySelector('.query').hidden=true;
+  document.querySelector('.topbar-right a[href="/static/batch.html"]').hidden=true;
+  document.getElementById('historyBar').style.display='none';
+  window.addEventListener('message',e=>{
+    if(e.origin!==location.origin || e.source!==window.parent || e.data?.type!=='commentpulse-load')return;
+    const data=e.data.data;
+    if(!data?.video || !Array.isArray(data.comments))return;
+    embeddedVideoId=data.video.id;
+    render(data);
+    embeddedTopics=e.data.topics||null;
+    if(embeddedTopics){
+      document.getElementById('topicSummary').textContent=embeddedTopics.summary;
+      document.getElementById('themeList').innerHTML=embeddedTopics.themes.map(t=>`<div class="theme-card ${SENT[t.tone]?.cls||''}"><div class="t-title">${esc(t.title)}</div><div class="t-desc">${esc(t.description)}</div></div>`).join('');
+      const needs=embeddedTopics.needs||[];
+      document.getElementById('needsList').innerHTML=needs.map(n=>`<div class="need-card"><div class="t-title">${esc(n.title)}</div><div class="t-desc">${esc(n.description)}</div></div>`).join('');
+      document.getElementById('needsEmpty').hidden=needs.length>0;
+      document.getElementById('reclassifiedNote').textContent='已载入批量分析生成的主题总结。';
+      deepResults.hidden=false;
+    }
+  });
+  window.parent.postMessage({type:'commentpulse-ready'},location.origin);
+}

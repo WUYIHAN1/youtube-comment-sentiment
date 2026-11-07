@@ -10,6 +10,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/ backend/
 COPY frontend/ frontend/
+COPY assets/overview.png assets/overview.png
 
 # 提前在构建阶段把 Twitter-RoBERTa 模型下载进镜像里，而不是等第一个访问的人来触发下载——
 # 公开分享场景不能让第一个点进来的人干等几分钟模型下载（本地开发时才用"第一次用到再下"的懒加载）。

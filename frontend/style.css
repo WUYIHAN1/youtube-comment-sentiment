@@ -214,6 +214,16 @@ section.block{margin-top:30px}
 .theme-card.neg .t-title{color:var(--neg-ink)}
 .theme-card .t-desc{font-size:.8rem; color:var(--muted); line-height:1.6}
 
+.sub-h{font-size:.8rem; color:var(--muted); font-weight:600; margin:20px 0 0}
+.needs{display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:10px; margin-top:10px}
+.need-card{background:var(--surface-2); border-radius:10px; padding:12px 14px; border-left:3px solid var(--accent)}
+.need-card .t-title{font-size:.85rem; font-weight:700; margin-bottom:4px; display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+.need-card .t-desc{font-size:.8rem; color:var(--muted); line-height:1.6}
+.support-badge{
+  font-size:.66rem; font-weight:600; color:var(--muted); background:var(--surface);
+  border:1px solid var(--border); border-radius:999px; padding:1px 8px;
+}
+
 .reviewed-badge{
   display:inline-block; margin-left:6px; font-size:.66rem; font-weight:700; letter-spacing:.02em;
   color:var(--accent); border:1px solid var(--accent); border-radius:5px; padding:0 5px; vertical-align:1px;

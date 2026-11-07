@@ -2,7 +2,7 @@
 
 from typing import Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class AnalyzeRequest(BaseModel):
@@ -17,6 +17,7 @@ class Comment(BaseModel):
     published_at: str
     is_reply: bool
     parent_id: Optional[str] = None
+    author_channel_id: str = ""
     sentiment: Literal["positive", "neutral", "negative"]
     confidence: float
 
@@ -37,6 +38,10 @@ class Video(BaseModel):
     title: str
     channel: str
     thumbnail: str
+    published_at: str = ""
+    channel_id: str = ""
+    view_count: Optional[int] = None
+    like_count: Optional[int] = None
 
 
 class AnalyzeResponse(BaseModel):
@@ -77,9 +82,16 @@ class Theme(BaseModel):
     tone: Literal["positive", "neutral", "negative"]  # 这个主题讨论呈现的整体情绪色彩
 
 
+class ProductNeed(BaseModel):
+    title: str
+    description: str
+    support: Literal["multiple", "few"]  # 多人提到 / 个别提到
+
+
 class TopicSummary(BaseModel):
     summary: str
     themes: list[Theme]
+    needs: list[ProductNeed]  # 从评论里提炼出的功能建议/产品需求，可能是空列表
 
 
 class DeepAnalyzeResponse(BaseModel):
@@ -98,3 +110,18 @@ class Translation(BaseModel):
 
 class TranslateResponse(BaseModel):
     translations: list[Translation]
+
+
+class ChannelVideosRequest(BaseModel):
+    channel: str = Field(min_length=1, max_length=500)
+    limit: int = Field(default=30, ge=1, le=50)
+
+
+class AdCandidate(BaseModel):
+    id: str = Field(pattern=r"^[A-Za-z0-9_-]{11}$")
+    title: str = Field(max_length=500)
+    description: str = Field(default="", max_length=3000)
+
+
+class AdScreenRequest(BaseModel):
+    videos: list[AdCandidate] = Field(min_length=1, max_length=50)

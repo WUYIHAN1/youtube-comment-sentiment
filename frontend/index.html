@@ -18,6 +18,7 @@
     CommentPulse
   </div>
   <div class="topbar-right">
+    <a href="/static/batch.html" class="theme-btn">批量分析 / 导出报告</a>
     <div class="quota-pill" id="quotaPill" title="YouTube API 每日配额用量（本地估算，非 Google 官方数字）" hidden>
       <span id="quotaText">查询余额 —</span>
       <span class="quota-bar"><span class="quota-bar-fill" id="quotaBarFill"></span></span>
@@ -70,11 +71,6 @@
         <p class="vmeta" id="videoMeta"></p>
       </div>
     </section>
-
-    <div class="toolbar-row">
-      <button id="exportBtn" type="button" class="ghost-btn">⬇ 导出 CSV</button>
-      <span class="toolbar-hint">包含原文、翻译（若已生成）、点赞、情感、把握度、AI 复核理由</span>
-    </div>
 
     <section class="block" id="overviewSection">
       <h2>概览</h2>
@@ -144,14 +140,23 @@
         <div class="error-box" id="deepErrorBox" hidden role="alert"></div>
         <div id="deepResults" hidden>
           <p class="deep-summary" id="topicSummary"></p>
+
+          <h3 class="sub-h">情感主题</h3>
           <div class="themes" id="themeList"></div>
+
+          <h3 class="sub-h">产品需求</h3>
+          <p class="deep-desc muted">从评论里提炼的具体功能建议/产品需求——测评类视频通常能挖出一些，
+            纯娱乐/教程类视频评论区一般没有这类内容，为空是正常情况，不代表分析出错。</p>
+          <div class="needs" id="needsList"></div>
+          <p class="deep-desc muted" id="needsEmpty" hidden>这条视频的评论区里没有发现明显的功能建议/产品需求。</p>
+
           <p class="deep-desc muted" id="reclassifiedNote"></p>
         </div>
       </div>
     </section>
 
     <section class="block" id="wordFreqSection">
-      <h2>各情感类别高频词 <span class="tag">粗糙版主题信号，不需要 LLM</span></h2>
+      <h2>各情感类别高频词</h2>
       <div class="panel">
         <div class="wordcols">
           <div class="wordcol">
@@ -171,7 +176,7 @@
     </section>
 
     <section class="block" id="repsSection">
-      <h2>代表性评论（点赞数Top10）</h2>
+      <h2>观众高赞评论（每类最多10条）<span class="tag" id="repsFilterNote" hidden></span></h2>
       <div class="reps">
         <div class="repcol">
           <h2><span class="dot pos"></span>最正面 · 按点赞排序</h2>
@@ -186,6 +191,10 @@
 
     <section class="block" id="tableSection">
       <h2>全部评论</h2>
+      <div class="toolbar-row">
+        <button id="exportBtn" type="button" class="ghost-btn">⬇ 导出 CSV</button>
+        <span class="toolbar-hint">包含原文、翻译（若已生成）、点赞、情感、把握度、AI 复核理由</span>
+      </div>
       <div class="search-row">
         <input id="searchBox" type="text" placeholder="搜关键词，比如 bambu lab……看含这个词的评论都是什么情感" aria-label="搜索评论关键词">
         <button id="searchClear" type="button" hidden>清除</button>

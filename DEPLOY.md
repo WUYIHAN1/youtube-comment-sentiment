@@ -2,6 +2,16 @@
 
 > 现状：已决定暂不上线，代码侧准备工作保留在这里，需要时可以直接按下面的步骤走。
 
+## 个人主页入口
+
+在项目目录用已有 Python 环境运行 `python -m uvicorn backend.main:app --reload`，
+然后打开 `http://127.0.0.1:8000/portfolio`。个人主页、分析器和 API 由同一个 FastAPI 服务提供。
+
+容器上线后，分享 `https://<部署域名>/portfolio`。访客点「体验评论分析器」即可进入工具。
+在托管平台的密钥设置里配置 `YOUTUBE_API_KEY`，需要 AI 深度分析时再配置 `DEEPSEEK_API_KEY`。
+
+## Docker 托管
+
 托管平台选的是 **Hugging Face Spaces**（Docker SDK）。Key 策略是"站长自己的 key"——陌生人打开链接用的
 是你的 YouTube/DeepSeek 配额和余额，所以代码里已经加了限流（`backend/budget.py`）：单 IP 滑动窗口 +
 每日全局上限，都能用环境变量调，默认值偏保守，适合"分享给朋友圈"这个量级。

@@ -1,6 +1,7 @@
 fastapi>=0.115
 uvicorn[standard]>=0.30
 google-api-python-client>=2.140
+PySocks>=1.7.1
 python-dotenv>=1.0
 transformers>=4.44
 torch>=2.3
