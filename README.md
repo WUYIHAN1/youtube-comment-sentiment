@@ -3,6 +3,110 @@
 需求文档见 [mini-prd.md](mini-prd.md)；部署说明见 [DEPLOY.md](DEPLOY.md)；过程记录见项目根目录的
 `YouTube评论情感分析-项目日志.md`。
 
+## 下载与本地运行
+
+运行本项目需要 Python 后端。安装完成后，通过浏览器访问本地网址使用。
+
+### 1. 下载项目
+
+当前仓库为私有仓库，下载前需要仓库所有者邀请你的 GitHub 账号作为协作者，并接受邀请。
+有访问权限后，在仓库顶部点击绿色 **Code → Download ZIP**，解压后进入项目文件夹。
+
+也可以先安装 Git 并完成 GitHub 身份验证，然后在终端运行以下命令。
+
+```bash
+git clone https://github.com/WUYIHAN1/youtube-comment-sentiment.git
+cd youtube-comment-sentiment
+```
+
+### 2. 安装 Python 和依赖
+
+建议使用 **Python 3.11**（当前项目已在 Python 3.11 环境运行）。
+安装时确认可以在终端调用 Python。Windows 安装程序中可以勾选 “Add Python to PATH”。
+依赖包含 PyTorch，安装和首次下载模型需要联网，并预留数 GB 磁盘空间。
+
+在项目根目录打开终端，按操作系统执行以下命令。
+
+**macOS / Linux**
+
+```bash
+python3.11 -m venv .venv
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -r requirements.txt
+cp .env.example .env
+```
+
+**Windows PowerShell**
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+Copy-Item .env.example .env
+```
+
+首次安装时复制配置文件即可。已有 `.env` 时直接编辑，保留自己的配置。
+
+### 3. 配置自己的 API Key
+
+用文本编辑器打开项目根目录的 `.env`，填写以下配置。Windows 上注意文件名应为 `.env`，避免保存成 `.env.txt`。
+
+```dotenv
+YOUTUBE_API_KEY=填入你自己的YouTube_API_Key
+MAX_TOP_LEVEL_COMMENTS=1000
+DEEPSEEK_API_KEY=
+```
+
+- **YouTube API Key 必填**。登录 Google Cloud，创建或选择项目，启用 **YouTube Data API v3**，再在凭据页面创建 API 密钥。此工具读取公开视频和评论，使用 API Key 即可。调用会消耗该 Google Cloud 项目的 YouTube 配额。参考 Google 官方设置说明。[YouTube API 身份验证指南](https://developers.google.com/youtube/v3/guides/authentication)
+- **DeepSeek API Key 可选**。需要 AI 深度分析、主题总结、翻译和广告初筛时，在 DeepSeek 平台申请 Key 并填入 `DEEPSEEK_API_KEY`。这些功能调用自己的 DeepSeek 账户并按平台计费。[DeepSeek 开放平台](https://platform.deepseek.com/)
+- 基础情感分类使用本地模型。模型首次使用时从 Hugging Face 下载，后续使用本机缓存。
+- `.env` 已在 `.gitignore` 中排除。密钥保存在自己的电脑上，每位使用者配置自己的 Key。
+
+### 4. 启动服务
+
+在项目根目录运行，保持这个终端窗口开启。
+
+**macOS / Linux**
+
+```bash
+.venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+```
+
+**Windows PowerShell**
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+```
+
+看到 `Uvicorn running on http://127.0.0.1:8000` 后，在浏览器打开所需页面。
+
+| 页面 | 本地网址 |
+| --- | --- |
+| 单视频评论分析 | http://127.0.0.1:8000/ |
+| 批量分析与报告导出 | http://127.0.0.1:8000/static/batch.html |
+| 个人项目主页 | http://127.0.0.1:8000/portfolio |
+| 服务状态 | http://127.0.0.1:8000/api/health |
+
+服务状态返回 `"ok": true` 且 `"has_api_key": true` 表示服务已启动并读取到 YouTube Key，
+Key 是否有效需要实际分析视频确认。先选一个开放评论、评论量较少的视频进行测试。
+首次分析会下载并加载情感模型，可能需要几分钟，请查看终端进度。按 **Ctrl+C** 停止服务。
+每次重新使用时，运行启动命令即可。修改 `.env` 后需重新启动服务。
+
+### 常见问题
+
+| 现象 | 处理方式 |
+| --- | --- |
+| 本地页面打不开 | 确认启动终端仍在运行，端口与浏览器地址一致；直接双击 HTML 文件会缺少后端服务 |
+| 提示端口已占用 | 把启动命令的端口改成 `--port 8001`，浏览器也改为访问 `http://127.0.0.1:8001` |
+| 提示未配置 YouTube Key | 检查项目根目录的 `.env` 文件名、Key 内容，并重启服务 |
+| Key 无效、权限不足或额度用尽 | 确认已启用 YouTube Data API v3，检查密钥限制与该项目配额 |
+| 首次分析等待较久 | 查看终端的模型下载进度；电脑需能访问 Hugging Face |
+| 无法获取视频或评论 | 确认后端所在电脑能访问 Google / YouTube API，并选择开放评论的公开视频 |
+| AI 功能失败 | 检查 DeepSeek Key、账户余额、网络和终端错误信息 |
+
+上述入口与现有测试已在开发环境检查。Windows 命令尚未在 Windows 设备实测，
+也尚未完成从全新电脑下载、安装到实际分析的完整验证。
+
 ## 介绍
 
 这是一个 YouTube 视频评论区分析器。输入视频链接，可以快速了解评论区的情感倾向和主要讨论内容，
